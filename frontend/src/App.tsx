@@ -1,3 +1,6 @@
+// ─── App.tsx v3 ──────────────────────────────────────────────────────────────
+// À remplacer dans src/App.tsx
+
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
@@ -11,6 +14,8 @@ import { GalaxyPage }     from '@/pages/GalaxyPage'
 import { RankingPage }    from '@/pages/RankingPage'
 import { PlanetPage }     from '@/pages/PlanetPage'
 import { BuildingsPage }  from '@/pages/BuildingsPage'
+import { ExpeditionPage } from '@/pages/ExpeditionPage'
+import { TechPage }       from '@/pages/TechPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuthStore()
@@ -30,19 +35,19 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<RedirectIfAuth><LoginPage /></RedirectIfAuth>} />
-
         <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard"   element={<DashboardPage />} />
-          <Route path="/planets/:id" element={<PlanetPage />} />
-          <Route path="/buildings"   element={<BuildingsPage />} />
-          <Route path="/hangar"      element={<HangarPage />} />
-          <Route path="/hangar/:id"  element={<ShipDetailPage />} />
-          <Route path="/forge"       element={<ForgePage />} />
-          <Route path="/galaxy"      element={<GalaxyPage />} />
-          <Route path="/ranking"     element={<RankingPage />} />
+          <Route path="/dashboard"    element={<DashboardPage />} />
+          <Route path="/planets/:id"  element={<PlanetPage />} />
+          <Route path="/buildings"    element={<BuildingsPage />} />
+          <Route path="/hangar"       element={<HangarPage />} />
+          <Route path="/hangar/:id"   element={<ShipDetailPage />} />
+          <Route path="/forge"        element={<ForgePage />} />
+          <Route path="/galaxy"       element={<GalaxyPage />} />
+          <Route path="/ranking"      element={<RankingPage />} />
+          <Route path="/expeditions"  element={<ExpeditionPage />} />
+          <Route path="/tech"         element={<TechPage />} />
         </Route>
-
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

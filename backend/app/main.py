@@ -63,7 +63,7 @@ app.add_middleware(
 )
 
 # Routers
-from app.routers import auth, ships, modules, forge, planets, fleets, combat, ranking, scars, galaxy
+from app.routers import auth, ships, modules, forge, planets, fleets, combat, ranking, scars, galaxy, expeditions, tech
 from app.websocket.handler import router as ws_router
 
 app.include_router(auth.router,    prefix="/api/v1")
@@ -76,6 +76,8 @@ app.include_router(combat.router,  prefix="/api/v1")
 app.include_router(ranking.router, prefix="/api/v1")
 app.include_router(scars.router,   prefix="/api/v1")
 app.include_router(galaxy.router,  prefix="/api/v1")
+app.include_router(expeditions.router, prefix="/api/v1")
+app.include_router(tech.router,        prefix="/api/v1")
 app.include_router(ws_router)
 
 

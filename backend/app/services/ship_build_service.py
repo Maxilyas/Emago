@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.tasks.resource_tick import _get_building_level
 from app.models.models import ForgeQueue, Planet, Player, Ship
 from app.services.ship_stats_service import invalidate_hangar_cache
 
@@ -117,6 +117,15 @@ SHIP_TYPE_CLASS: dict[str, str] = {
     "frigate_exploration": "EXPLORATION",
     "cruiser_attack":      "ATTACK",
     "cruiser_defense":     "DEFENSE",
+}
+
+SHIP_SHIPYARD_REQUIREMENTS: dict[str, int] = {
+    "frigate_attack":      1,   # Chantier Niv.1
+    "frigate_defense":     1,   # Chantier Niv.1
+    "frigate_support":     1,   # Chantier Niv.1
+    "frigate_exploration": 2,   # Chantier Niv.2
+    "cruiser_attack":      4,   # Chantier Niv.4
+    "cruiser_defense":     4,   # Chantier Niv.4
 }
 
 # Singleton SystemRandom — entropie OS, non seedable de l'extérieur (Agent 3 §4)
@@ -292,6 +301,20 @@ async def build_ship(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planète introuvable.")
 
     _check_and_deduct_resources(planet, build_cost, db)
+
+    from app.services.ship_build_service import SHIP_SHIPYARD_REQUIREMENTS
+    shipyard_level = _get_building_level(planet.buildings or {}, "shipyard")
+    required_level = SHIP_SHIPYARD_REQUIREMENTS.get(ship_type, 1)
+    if shipyard_level < required_level:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Chantier Naval insuffisant pour construire {ship_type!r}. "
+                f"Requis : Niveau {required_level}, actuel : Niveau {shipyard_level}. "
+                f"Améliorez votre Chantier Naval dans la page Bâtiments."
+            ),
+        )
+
 
     # 3. RNG
     rarity = roll_rarity()
