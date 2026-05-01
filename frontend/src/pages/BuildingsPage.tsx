@@ -7,6 +7,8 @@ import { ApiError } from '@/lib/api'
 import { planetsApi } from '@/api'
 import { LoadingSpinner } from '@/components/ui'
 import { fmt, fmtShort, fmtCountdown } from '@/lib/utils'
+import { BuildingBlockedReason, ProductionDelta } from '@/components/buildings/BuildingTooltip'
+import { BuildingCardUX } from '@/components/buildings/BuildingCardUX'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface UnlockInfo { level: number; unlock: string }
@@ -58,7 +60,6 @@ function EnergyGauge({ buildings, rates }: { buildings: BuildingInfo[]; rates: a
   const factor = rates.energy_factor
   const shortage = factor < 0.99
 
-  // Calculer consommation par mine
   const mines = [
     { key: 'metal_mine',            label: 'Mine métal',  consumption: 10, color: '#94a3b8' },
     { key: 'crystal_mine',          label: 'Mine cristal', consumption: 10, color: '#7dd3fc' },
@@ -82,7 +83,6 @@ function EnergyGauge({ buildings, rates }: { buildings: BuildingInfo[]; rates: a
         </span>
       </div>
 
-      {/* Barre d'énergie globale */}
       <div className="h-3 bg-gray-800 rounded-full overflow-hidden mb-3">
         <div
           className="h-full rounded-full transition-all duration-700 relative overflow-hidden"
@@ -142,12 +142,17 @@ const SHIP_TYPES_BY_LEVEL = [
   { level: 4, ships: ['Croiseur Attaque', 'Croiseur Défense'], icons: ['⚔️⚔️', '🛡️🛡️'] },
 ]
 
-function ShipyardZone({ building, resources, onBuild, disabled }: {
-  building: BuildingInfo; resources: any; onBuild: (key: string) => void; disabled: boolean
+// FIX : ajout de queueLength dans les props
+function ShipyardZone({ building, resources, onBuild, disabled, queueLength }: {
+  building: BuildingInfo; resources: any; onBuild: (key: string) => void; disabled: boolean; queueLength: number
 }) {
   const lvl = building.level
   const cost = building.cost_next
-  const canAfford = Math.floor(resources.metal) >= cost.metal && Math.floor(resources.crystal) >= cost.crystal && Math.floor(resources.deuterium) >= cost.deuterium
+  const canAfford = Math.floor(resources.metal) >= cost.metal
+    && Math.floor(resources.crystal) >= cost.crystal
+    && Math.floor(resources.deuterium) >= cost.deuterium
+  const hasSlot = queueLength < 5
+  const canBuild = canAfford && hasSlot && !building.in_queue
 
   return (
     <div className="rounded-2xl overflow-hidden"
@@ -212,14 +217,20 @@ function ShipyardZone({ building, resources, onBuild, disabled }: {
 }
 
 // ─── Composant bâtiment standard ──────────────────────────────────────────────
-function BuildingCard({ building, resources, onBuild, disabled }: {
-  building: BuildingInfo; resources: any; onBuild: (key: string) => void; disabled: boolean
+function BuildingCard({ building, resources, onBuild, disabled, queueLength }: {
+  building: BuildingInfo; resources: any; onBuild: (key: string) => void
+  disabled: boolean; queueLength: number
 }) {
   const [expanded, setExpanded] = useState(false)
   const catColors: Record<string, string> = { production: '#94a3b8', energy: '#fbbf24', military: '#2d7dd2', research: '#7c3aed' }
   const color = catColors[building.category] ?? '#6b7280'
   const cost = building.cost_next
-  const canAfford = Math.floor(resources.metal) >= cost.metal && Math.floor(resources.crystal) >= cost.crystal && Math.floor(resources.deuterium) >= cost.deuterium
+  const canAfford = Math.floor(resources.metal) >= cost.metal
+    && Math.floor(resources.crystal) >= cost.crystal
+    && Math.floor(resources.deuterium) >= cost.deuterium
+  // FIX : hasSlot et canBuild manquaient dans ce scope
+  const hasSlot = queueLength < 5
+  const canBuild = canAfford && hasSlot && !building.in_queue
 
   return (
     <div className="rounded-xl border overflow-hidden transition-all duration-200"
@@ -244,6 +255,10 @@ function BuildingCard({ building, resources, onBuild, disabled }: {
           </div>
         </div>
 
+        {building.per_level && (
+          <ProductionDelta perLevel={building.per_level} currentLevel={building.level} icon={building.icon} />
+        )}
+
         {building.next_unlock && !building.in_queue && (
           <div className="mb-3 px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2"
             style={{ background: `rgba(${hexToRgb(color)},0.06)`, border: `1px solid rgba(${hexToRgb(color)},0.15)` }}>
@@ -259,12 +274,21 @@ function BuildingCard({ building, resources, onBuild, disabled }: {
               {cost.deuterium > 0 && <span className={canAfford ? 'text-gray-400' : 'text-red-400'}>⚗️ {fmt(cost.deuterium)}</span>}
               <span className="text-gray-600">⏱ {fmtCountdown(cost.seconds)}</span>
             </div>
-            <button onClick={() => onBuild(building.key)} disabled={disabled || !canAfford}
+            <button onClick={() => onBuild(building.key)} disabled={disabled || !canBuild}
               className="w-full py-1.5 rounded-lg text-xs font-display tracking-wider transition-all"
-              style={canAfford ? { background: `rgba(${hexToRgb(color)},0.12)`, border: `1px solid rgba(${hexToRgb(color)},0.3)`, color }
-                               : { background: 'rgba(30,40,55,0.4)', border: '1px solid rgba(45,58,80,0.4)', color: '#374151' }}>
-              {canAfford ? `AMÉLIORER → Niv.${building.level+1}` : 'INSUFFISANT'}
+              style={canBuild ? { background: `rgba(${hexToRgb(color)},0.12)`, border: `1px solid rgba(${hexToRgb(color)},0.3)`, color }
+                              : { background: 'rgba(30,40,55,0.4)', border: '1px solid rgba(45,58,80,0.4)', color: '#374151' }}>
+              {canBuild ? `AMÉLIORER → Niv.${building.level+1}` : '🔒 IMPOSSIBLE'}
             </button>
+
+            {!canBuild && (
+              <BuildingBlockedReason
+                building={building}
+                planetResources={resources}
+                energyFactor={1}
+                hasQueueSlot={hasSlot}
+              />
+            )}
           </>
         )}
 
@@ -391,7 +415,15 @@ export function BuildingsPage() {
             <p className="section-title mb-3">⚡ ÉNERGIE</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <EnergyGauge buildings={planet.buildings} rates={planet.production_rates} />
-              {solarPlant && <BuildingCard building={solarPlant} resources={resources} onBuild={build} disabled={isPending} />}
+              {solarPlant && (
+                <BuildingCard
+                  building={solarPlant}
+                  resources={resources}
+                  onBuild={build}
+                  disabled={isPending}
+                  queueLength={planet.build_queue.length}
+                />
+              )}
             </div>
           </div>
 
@@ -400,7 +432,14 @@ export function BuildingsPage() {
             <p className="section-title mb-3">⛏️ PRODUCTION</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {productionBuildings.map(b => (
-                <BuildingCard key={b.key} building={b} resources={resources} onBuild={build} disabled={isPending} />
+                <BuildingCard
+                  key={b.key}
+                  building={b}
+                  resources={resources}
+                  onBuild={build}
+                  disabled={isPending}
+                  queueLength={planet.build_queue.length}
+                />
               ))}
             </div>
           </div>
@@ -408,7 +447,15 @@ export function BuildingsPage() {
           {/* ZONE CHANTIER NAVAL */}
           <div>
             <p className="section-title mb-3">🏭 CHANTIER NAVAL</p>
-            {shipyard && <ShipyardZone building={shipyard} resources={resources} onBuild={build} disabled={isPending} />}
+            {shipyard && (
+              <ShipyardZone
+                building={shipyard}
+                resources={resources}
+                onBuild={build}
+                disabled={isPending}
+                queueLength={planet.build_queue.length}
+              />
+            )}
           </div>
 
           {/* ZONE RECHERCHE */}
@@ -418,7 +465,15 @@ export function BuildingsPage() {
               <Link to="/tech" className="text-[10px] text-accent-blue font-display">ARBRE TECH →</Link>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {researchLab && <BuildingCard building={researchLab} resources={resources} onBuild={build} disabled={isPending} />}
+              {researchLab && (
+                <BuildingCard
+                  building={researchLab}
+                  resources={resources}
+                  onBuild={build}
+                  disabled={isPending}
+                  queueLength={planet.build_queue.length}
+                />
+              )}
               {/* Teaser Académie des modules */}
               <Link to="/tech" className="panel hover:bg-surface-elevated transition-all group"
                 style={{ borderColor: 'rgba(124,58,237,0.2)' }}>

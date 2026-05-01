@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import { fmt } from '@/lib/utils'
 import type { Rarity, ShipType } from '@/types'
+import { RarityReveal } from '@/components/ships/RarityReveal'
 import { SHIP_TYPE_CONFIG, RARITY_CONFIG } from '@/types'
 
 // Coûts de construction (sync avec backend)
@@ -34,6 +35,7 @@ export function HangarPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [rarityFilter, setRarityFilter] = useState<Rarity | 'all'>('all')
   const [showBuild, setShowBuild] = useState(false)
+  const [reveal, setReveal] = useState<any>(null)
 
   const { data: ships, isLoading } = useQuery({ queryKey: ['ships'], queryFn: shipsApi.list })
   const { data: planets } = useQuery({ queryKey: ['planets'], queryFn: planetsApi.list })
@@ -127,9 +129,20 @@ export function HangarPage() {
         <BuildModal
           planets={planets ?? []}
           onClose={() => setShowBuild(false)}
-          onBuilt={() => { qc.invalidateQueries({ queryKey: ['ships'] }); setShowBuild(false) }}
+          onBuilt={(res) => {
+            setShowBuild(false)
+            setReveal(res)
+          }}
         />
       )}
+
+      <RarityReveal
+        data={reveal}
+        onDismiss={() => {
+          setReveal(null)
+          qc.invalidateQueries({ queryKey: ['ships'] })
+        }}
+      />
     </div>
   )
 }
@@ -138,7 +151,7 @@ export function HangarPage() {
 function BuildModal({ planets, onClose, onBuilt }: {
   planets: { id: string; name: string; metal: number; crystal: number; deuterium: number }[]
   onClose: () => void
-  onBuilt: () => void
+  onBuilt: (res: any) => void   // passe la réponse pour RarityReveal
 }) {
   const [shipType, setShipType] = useState<ShipType>('frigate_attack')
   const [planetId, setPlanetId] = useState(planets[0]?.id ?? '')
@@ -153,13 +166,8 @@ function BuildModal({ planets, onClose, onBuilt }: {
   const { mutate: build, isPending } = useMutation({
     mutationFn: () => shipsApi.build({ ship_type: shipType, planet_id: planetId }),
     onSuccess: (res) => {
-      const rarity = res.rarity as Rarity
-      const cfg = RARITY_CONFIG[rarity]
-      toast.success(`🎲 ${cfg.label} obtenu !`, {
-        duration: 6000,
-        style: { background: '#0d1220', border: `1px solid ${cfg.color}50`, color: cfg.color },
-      })
-      onBuilt()
+      // Transmet la réponse à RarityReveal — le toast est remplacé par l'overlay
+      onBuilt(res)
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.detail : 'Erreur'),
   })

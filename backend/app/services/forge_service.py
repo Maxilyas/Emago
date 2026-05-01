@@ -20,6 +20,12 @@ Architecture (Agent 3, décision 5) :
 Race condition mitigée :
   Les deux vaisseaux sont sélectionnés avec FOR UPDATE dans la même transaction.
   La vérification du statut IN_FORGE est faite à l'intérieur du verrou.
+
+FIX 2025-01-29 :
+  Les ressources (métal, cristal, deutérium) appartiennent à Planet, pas à Player.
+  _check_forge_resources prend désormais une Planet en paramètre.
+  La planète est déduite de ship_a.planet_id (les deux vaisseaux doivent être
+  sur la même planète — validé avant l'appel).
 """
 
 from __future__ import annotations
@@ -34,7 +40,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis_client import get_redis, publish_event
-from app.models.models import ForgeQueue, Player, Ship
+from app.models.models import ForgeQueue, Planet, Player, Ship
 from app.services.ship_build_service import (
     SHIP_TYPE_BUILD_COST,
     generate_base_stats,
@@ -86,12 +92,12 @@ async def start_forge(
       - Même rarity
       - Les deux sont DOCKED (pas IN_FLEET ni déjà IN_FORGE)
       - Rareté améliorable (pas LEGENDARY)
-      - Ressources suffisantes (3× coût de construction)
+      - Ressources suffisantes sur la planète d'amarrage (3× coût de construction)
 
-    Atomicité : SELECT FOR UPDATE sur les deux vaisseaux dans la même transaction.
+    Atomicité : SELECT FOR UPDATE sur les deux vaisseaux + la planète dans la même transaction.
 
     Returns:
-        {"forge_id": str, "completed_at": ISO, "progress_pct": 0}
+        {"forge_id": str, "completed_at": ISO, "progress_pct": 0, "eta_seconds": int}
     """
     if ship_a_id == ship_b_id:
         raise HTTPException(
@@ -164,18 +170,47 @@ async def start_forge(
                 ),
             )
 
+    # --- Récupération de la planète source pour les ressources ---
+    # FIX : les ressources sont sur Planet, pas sur Player.
+    # On utilise la planète de ship_a. Si ship_a n'est pas amarré sur une planète
+    # (planet_id NULL), on cherche la première planète du joueur.
+    planet_id = ship_a.planet_id
+    if planet_id is None:
+        planet_id = ship_b.planet_id
+
+    if planet_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Impossible de déduire les ressources : aucun des vaisseaux "
+                "n'est assigné à une planète. Amarrez-les avant de forger."
+            ),
+        )
+
+    planet_result = await db.execute(
+        select(Planet)
+        .where(Planet.id == planet_id)
+        .with_for_update()
+    )
+    planet: Planet | None = planet_result.scalar_one_or_none()
+    if planet is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Planète source introuvable.",
+        )
+
+    if planet.owner_id != player_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La planète source ne vous appartient pas.",
+        )
+
     # --- Ressources (3× coût de construction, GDD §5b) ---
     base_cost = SHIP_TYPE_BUILD_COST.get(ship_a.ship_type, {})
     forge_cost = {k: v * 3 for k, v in base_cost.items()}
 
-    player_result = await db.execute(
-        select(Player).where(Player.id == player_id).with_for_update()
-    )
-    player: Player | None = player_result.scalar_one_or_none()
-    if player is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Joueur introuvable.")
-
-    _check_forge_resources(player, forge_cost, db)
+    # FIX : vérification et déduction sur Planet (pas Player)
+    _check_forge_resources(planet, forge_cost, db)
 
     # --- Passage des vaisseaux en IN_FORGE ---
     ship_a.status = "IN_FORGE"
@@ -192,6 +227,9 @@ async def start_forge(
         ship_a_id=ship_a_id,
         ship_b_id=ship_b_id,
         player_id=player_id,
+        cost_metal=int(forge_cost.get("metal", 0)),
+        cost_crystal=int(forge_cost.get("crystal", 0)),
+        cost_deuterium=int(forge_cost.get("deuterium", 0)),
         started_at=now,
         completed_at=completed_at,
         result_ship_id=None,   # rempli par le scheduler à la finalisation
@@ -272,6 +310,7 @@ async def finalize_forge(
     new_ship = Ship(
         id=uuid.uuid4(),
         owner_id=forge_entry.player_id,
+        planet_id=ship_a.planet_id,  # amarré sur la même planète que ship_a
         ship_type=ship_a.ship_type,
         ship_class=ship_a.ship_class,
         rarity=result_rarity,
@@ -294,6 +333,7 @@ async def finalize_forge(
 
     # --- Mise à jour forge_queue ---
     forge_entry.result_ship_id = new_ship.id
+    forge_entry.is_completed = True
     db.add(forge_entry)
 
     # --- Redis : progression 100 % ---
@@ -313,13 +353,13 @@ async def finalize_forge(
         event={
             "type": "forge.complete",
             "data": {
-                "forge_id":     str(forge_entry.id),
-                "new_ship_id":  str(new_ship.id),
-                "rarity":       result_rarity,
-                "base_stats":   forged_stats,
-                "combat_xp":    transferred_xp,
-                "slots_total":  total_slots,
-                "slots_premium":premium_slots,
+                "forge_id":      str(forge_entry.id),
+                "new_ship_id":   str(new_ship.id),
+                "rarity":        result_rarity,
+                "base_stats":    forged_stats,
+                "combat_xp":     transferred_xp,
+                "slots_total":   total_slots,
+                "slots_premium": premium_slots,
             },
         },
     )
@@ -354,7 +394,7 @@ async def compute_live_progress(forge_id: uuid.UUID, completed_at: datetime) -> 
     eta_seconds = max(0, int((completed_at.replace(tzinfo=UTC) - now).total_seconds()))
 
     return {
-        "forge_id":    str(forge_id),
+        "forge_id":     str(forge_id),
         "progress_pct": progress_pct,
         "eta_seconds":  eta_seconds,
         "completed_at": completed_at.isoformat(),
@@ -393,7 +433,6 @@ async def run_forge_tick(db: AsyncSession) -> None:
             await db.commit()
         except Exception as exc:
             await db.rollback()
-            # Log l'erreur sans crasher les autres forges
             import logging
             logging.getLogger(__name__).error(
                 "Erreur finalisation forge %s : %s", forge_entry.id, exc, exc_info=True
@@ -420,24 +459,27 @@ def _merge_best_stats(
 
 
 def _check_forge_resources(
-    player: Player,
+    planet: Planet,
     cost: dict[str, float],
     db: AsyncSession,
 ) -> None:
     """
-    Vérifie et déduit les ressources de forge (3× coût de construction).
+    Vérifie et déduit les ressources de forge (3× coût de construction)
+    depuis la planète source.
+
+    FIX : les ressources sont sur Planet, pas sur Player.
 
     Raises:
         HTTPException 402 : ressources insuffisantes.
     """
-    needed_metal    = cost.get("metal", 0)
-    needed_crystal  = cost.get("crystal", 0)
-    needed_deut     = cost.get("deuterium", 0)
+    needed_metal   = cost.get("metal", 0)
+    needed_crystal = cost.get("crystal", 0)
+    needed_deut    = cost.get("deuterium", 0)
 
     if (
-        player.metal    < needed_metal
-        or player.crystal < needed_crystal
-        or player.deuterium < needed_deut
+        float(planet.metal)    < needed_metal
+        or float(planet.crystal) < needed_crystal
+        or float(planet.deuterium) < needed_deut
     ):
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -445,15 +487,17 @@ def _check_forge_resources(
                 f"Ressources insuffisantes pour la Forge. "
                 f"Requis : métal={needed_metal:.0f}, cristal={needed_crystal:.0f}, "
                 f"deutérium={needed_deut:.0f}. "
-                f"Disponible : métal={player.metal:.0f}, cristal={player.crystal:.0f}, "
-                f"deutérium={player.deuterium:.0f}."
+                f"Disponible sur {planet.name} : "
+                f"métal={float(planet.metal):.0f}, "
+                f"cristal={float(planet.crystal):.0f}, "
+                f"deutérium={float(planet.deuterium):.0f}."
             ),
         )
 
-    player.metal     -= needed_metal
-    player.crystal   -= needed_crystal
-    player.deuterium -= needed_deut
-    db.add(player)
+    planet.metal     = float(planet.metal)    - needed_metal
+    planet.crystal   = float(planet.crystal)  - needed_crystal
+    planet.deuterium = float(planet.deuterium) - needed_deut
+    db.add(planet)
 
 
 async def _store_forge_status(
