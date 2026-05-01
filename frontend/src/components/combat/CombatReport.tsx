@@ -1,5 +1,6 @@
 /**
  * CombatReport — affiche le résultat d'un combat reçu via WebSocket.
+ * Sprint 4 : ajout prop onViewFull pour naviguer vers /combat/:id
  */
 import React from 'react'
 import { Modal, Badge } from '@/components/ui'
@@ -9,9 +10,10 @@ import type { CombatResultData } from '@/types'
 interface Props {
   data: CombatResultData | null
   onClose: () => void
+  onViewFull?: () => void   // ← Sprint 4 : callback vers /combat/:id
 }
 
-export function CombatReport({ data, onClose }: Props) {
+export function CombatReport({ data, onClose, onViewFull }: Props) {
   if (!data) return null
 
   const won    = data.winner === 'ATTACKER'
@@ -29,25 +31,16 @@ export function CombatReport({ data, onClose }: Props) {
           className="text-4xl font-bold mb-1"
           style={{ color }}
         >
-          {won ? 'VICTOIRE' : draw ? 'ÉGALITÉ' : 'DÉFAITE'}
+          {title}
         </div>
-        <p className="text-gray-400 text-sm">{data.total_rounds} rounds de combat</p>
-      </div>
-
-      {/* Puissances */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="panel text-center">
-          <p className="text-xs text-gray-500 mb-1">Puissance attaquante</p>
-          <p className="text-lg font-mono text-blue-400">{fmtShort(data.attacker_power)}</p>
-        </div>
-        <div className="panel text-center">
-          <p className="text-xs text-gray-500 mb-1">Puissance défensive</p>
-          <p className="text-lg font-mono text-red-400">{fmtShort(data.defender_power)}</p>
-        </div>
+        <p className="text-gray-400 text-sm">
+          {data.total_rounds} round{data.total_rounds > 1 ? 's' : ''} •{' '}
+          Puissance : {fmt(data.attacker_power)} vs {fmt(data.defender_power)}
+        </p>
       </div>
 
       {/* Pertes */}
-      {(data.ships_lost.attacker.length > 0 || data.ships_lost.defender.length > 0) && (
+      {data.ships_lost && (
         <div className="panel mb-3">
           <h3 className="text-sm font-semibold text-gray-300 mb-2">Pertes</h3>
           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -68,8 +61,8 @@ export function CombatReport({ data, onClose }: Props) {
         <div className="panel mb-3">
           <h3 className="text-sm font-semibold text-gray-300 mb-2">🏆 Butin pillé</h3>
           <div className="flex gap-4 text-sm">
-            {data.loot.metal    && <span className="text-metal">⛏️ {fmt(data.loot.metal)}</span>}
-            {data.loot.crystal  && <span className="text-crystal">💎 {fmt(data.loot.crystal)}</span>}
+            {data.loot.metal     && <span className="text-metal">⛏️ {fmt(data.loot.metal)}</span>}
+            {data.loot.crystal   && <span className="text-crystal">💎 {fmt(data.loot.crystal)}</span>}
             {data.loot.deuterium && <span className="text-deuterium">⚗️ {fmt(data.loot.deuterium)}</span>}
           </div>
         </div>
@@ -122,9 +115,21 @@ export function CombatReport({ data, onClose }: Props) {
         </div>
       )}
 
-      <button onClick={onClose} className="btn-primary w-full">
-        Fermer
-      </button>
+      {/* ── Boutons Sprint 4 ───────────────────────────────────────────────── */}
+      <div className="flex gap-3">
+        {/* Voir rapport complet → /combat/:id */}
+        {onViewFull && (
+          <button
+            onClick={onViewFull}
+            className="flex-1 py-2 rounded-lg border border-blue-500/40 text-blue-400 hover:bg-blue-900/20 text-sm font-medium transition-colors"
+          >
+            📋 Rapport complet
+          </button>
+        )}
+        <button onClick={onClose} className="btn-primary flex-1">
+          Fermer
+        </button>
+      </div>
     </Modal>
   )
 }

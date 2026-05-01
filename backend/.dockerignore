@@ -1,0 +1,41 @@
+# Agent 9 — DevOps — .dockerignore
+# Exclut tout ce qui ne doit pas entrer dans l'image de production
+
+# Environnements virtuels locaux
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+# Secrets — JAMAIS dans l'image
+.env
+.env.*
+!.env.example
+
+# Tests
+tests/
+pytest.ini
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Outils dev
+*.log
+*.tmp
+.git/
+.gitignore
+
+# Specs & docs (pas nécessaires en runtime)
+DEVOPS_SPEC.md
+QA_SPEC.md
+FRONTEND_SPEC.md
+README.md
+
+# Build artifacts Python
+*.egg-info/
+dist/
+build/

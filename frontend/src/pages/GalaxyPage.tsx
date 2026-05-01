@@ -18,6 +18,7 @@ import { LoadingSpinner, Modal } from '@/components/ui'
 import { fmt, fmtCountdown } from '@/lib/utils'
 import type { ShipSummary, FleetResponse } from '@/types'
 import { shipsApi } from '@/api/ships'
+import { GalaxyMap } from '@/components/galaxy/GalaxyMap'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -292,64 +293,24 @@ export function GalaxyPage() {
         <p className="text-xs text-gray-500">G{galaxy}:S{system}</p>
       </div>
 
-      {/* Grille des 15 positions */}
-      <div className="panel">
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
-          Système {galaxy}:{system} — 15 positions orbitales
-        </h2>
-        <div className="space-y-1">
-          {slots.map((slot) => (
-            <div
-              key={slot.position}
-              className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors ${
-                slot.planet_id
-                  ? slot.is_mine
-                    ? 'bg-green-900/20 border border-green-800/40'
-                    : 'bg-surface-tertiary hover:bg-surface-elevated cursor-pointer'
-                  : 'opacity-40'
-              }`}
-            >
-              {/* Position */}
-              <span className="text-xs text-gray-600 w-6 text-right font-mono">{slot.position}</span>
-
-              {/* Icône */}
-              <span className="text-base w-6 text-center">
-                {slot.planet_id ? (slot.is_mine ? '🌍' : '🪐') : '·'}
-              </span>
-
-              {/* Infos */}
-              <div className="flex-1">
-                {slot.planet_id ? (
-                  <>
-                    <p className="text-sm font-medium text-white leading-tight">{slot.planet_name}</p>
-                    <p className="text-xs text-gray-500">{slot.is_mine ? '(Votre planète)' : slot.owner_username ?? 'Inconnu'}</p>
-                  </>
-                ) : (
-                  <p className="text-xs text-gray-700">Vide</p>
-                )}
-              </div>
-
-              {/* Actions */}
-              {slot.planet_id && !slot.is_mine && (
-                <button
-                  onClick={() => setFleetTarget({ g: galaxy, s: system, p: slot.position, planetId: slot.planet_id })}
-                  className="text-xs px-2 py-1 rounded bg-red-900/40 hover:bg-red-800/60 text-red-300 transition-colors"
-                >
-                  ⚔️ Attaquer
-                </button>
-              )}
-              {slot.planet_id && slot.is_mine && (
-                <button
-                  onClick={() => setFleetTarget({ g: galaxy, s: system, p: slot.position, planetId: slot.planet_id })}
-                  className="text-xs px-2 py-1 rounded bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 transition-colors"
-                >
-                  📦 Transport
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Carte galactique SVG interactive */}
+      <GalaxyMap
+        planets={slots.map(s => ({
+          position: s.position,
+          planet_id: s.planet_id,
+          name: s.planet_name,
+          owner_id: s.owner_id,
+          owner_username: s.owner_username,
+          is_own: s.is_mine,
+        }))}
+        currentPlayerId=""
+        onSelectPlanet={(p) => {
+          if (p.planet_id) {
+            setFleetTarget({ g: galaxy, s: system, p: p.position, planetId: p.planet_id })
+          }
+        }}
+        selectedPlanetId={fleetTarget?.planetId ?? null}
+      />
 
       {/* Flottes en transit */}
       {fleets && fleets.length > 0 && (

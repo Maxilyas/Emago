@@ -1,151 +1,95 @@
 /**
- * Hook WebSocket Emago.
+ * hooks/useGameSocket.ts — v2
+ * Agent 6 — Développeur Frontend | Sprint 3
  *
- * - Connexion automatique quand l'utilisateur est authentifié
- * - Reconnexion avec backoff exponentiel (1s → 30s max)
- * - Ping/pong keepalive toutes les 30s
- * - Dispatch des événements dans gameStore + invalidation TanStack Query
- * - Fallback polling GET /forge/:id si WS déconnecté pendant forge active
+ * Sprint 3 : intégration complète des handlers WS avec invalidation TanStack Query.
+ * Importe les handlers depuis NotificationPanel pour centraliser la logique.
  */
 import { useEffect, useRef, useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/authStore'
-import { useGameStore } from '@/stores/gameStore'
-import type { CombatResultData, ForgeCompleteData, GradeUpData, ScarEarnedData, FleetArrivedData } from '@/types'
-import { GRADE_CONFIG } from '@/types'
+import { useWsEventHandlers } from '@/components/layout/NotificationPanel'
 
-const WS_URL = '/ws'
+const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+const MAX_RECONNECT_DELAY = 30_000
 
 export function useGameSocket() {
   const { accessToken } = useAuthStore()
-  const { setWsConnected, addNotification, setPendingCombatResult } = useGameStore()
-  const queryClient = useQueryClient()
-
-  const wsRef       = useRef<WebSocket | null>(null)
-  const retryRef    = useRef(0)
-  const pingRef     = useRef<ReturnType<typeof setInterval> | null>(null)
-  const mountedRef  = useRef(true)
-
-  const handleForgeComplete = useCallback((data: ForgeCompleteData) => {
-    queryClient.invalidateQueries({ queryKey: ['ships'] })
-    queryClient.invalidateQueries({ queryKey: ['forge', 'history'] })
-    addNotification({
-      type: 'forge',
-      title: '🔨 Forge terminée !',
-      message: `Nouveau vaisseau ${data.rarity} prêt dans le hangar.`,
-      data,
-    })
-    toast.success(`Forge terminée — vaisseau ${data.rarity} créé !`, { duration: 6000 })
-  }, [queryClient, addNotification])
-
-  const handleCombatResult = useCallback((data: CombatResultData) => {
-    queryClient.invalidateQueries({ queryKey: ['ships'] })
-    setPendingCombatResult(data)
-    const won = data.winner === 'ATTACKER'
-    addNotification({
-      type: 'combat',
-      title: won ? '⚔️ Victoire !' : data.winner === 'DRAW' ? '⚔️ Match nul' : '⚔️ Défaite',
-      message: `Combat en ${data.total_rounds} rounds — ${won ? 'victoire' : data.winner === 'DRAW' ? 'égalité' : 'défaite'}`,
-      data,
-    })
-  }, [queryClient, addNotification, setPendingCombatResult])
-
-  const handleGradeUp = useCallback((data: GradeUpData) => {
-    queryClient.invalidateQueries({ queryKey: ['ship', data.ship_id] })
-    const gradeName = GRADE_CONFIG[data.new_grade]?.name ?? `Grade ${data.new_grade}`
-    addNotification({
-      type: 'grade_up',
-      title: '⬆️ Progression de grade !',
-      message: `Un vaisseau atteint le grade ${gradeName}`,
-      data,
-    })
-    toast.success(`Grade ${gradeName} atteint !`, { icon: '⭐' })
-  }, [queryClient, addNotification])
-
-  const handleScarEarned = useCallback((data: ScarEarnedData) => {
-    queryClient.invalidateQueries({ queryKey: ['ship', data.ship_id] })
-    addNotification({
-      type: 'scar',
-      title: '🩹 Cicatrice gagnée',
-      message: data.tag,
-      data,
-    })
-  }, [queryClient, addNotification])
-
-  const handleFleetArrived = useCallback((data: FleetArrivedData) => {
-    queryClient.invalidateQueries({ queryKey: ['fleets'] })
-    addNotification({
-      type: 'fleet',
-      title: '🚀 Flotte arrivée',
-      message: `Mission ${data.mission} terminée`,
-      data,
-    })
-  }, [queryClient, addNotification])
+  const wsRef = useRef<WebSocket | null>(null)
+  const delayRef = useRef(1_000)
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handlers = useWsEventHandlers()
 
   const connect = useCallback(() => {
-    if (!accessToken || !mountedRef.current) return
+    if (!accessToken) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const ws = new WebSocket(`${WS_URL}?token=${accessToken}`)
+    const ws = new WebSocket(`${WS_BASE}/ws?token=${accessToken}`)
     wsRef.current = ws
 
     ws.onopen = () => {
-      retryRef.current = 0
-      setWsConnected(true)
-
-      // Ping keepalive toutes les 30s
-      pingRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
-      }, 30_000)
+      delayRef.current = 1_000  // reset backoff on successful connection
     }
 
-    ws.onmessage = (e: MessageEvent<string>) => {
+    ws.onmessage = (e) => {
       try {
-        const event = JSON.parse(e.data) as { type: string; data: unknown }
+        const event = JSON.parse(e.data)
         switch (event.type) {
-          case 'forge.complete':  handleForgeComplete(event.data as ForgeCompleteData); break
-          case 'combat.result':   handleCombatResult(event.data as CombatResultData); break
-          case 'ship.grade_up':   handleGradeUp(event.data as GradeUpData); break
-          case 'ship.scar_earned':handleScarEarned(event.data as ScarEarnedData); break
-          case 'fleet.arrived':   handleFleetArrived(event.data as FleetArrivedData); break
-          case 'connected':       break // bienvenue
-          case 'pong':            break // keepalive
+          case 'combat.result':    handlers.handleCombatResult(event.data);   break
+          case 'forge.complete':   handlers.handleForgeComplete(event.data);  break
+          case 'ship.grade_up':    handlers.handleGradeUp(event.data);        break
+          case 'ship.scar_earned': handlers.handleScarEarned(event.data);     break
+          case 'fleet.arrived':    handlers.handleFleetArrived(event.data);   break
+          case 'connected':        /* bienvenue — pas d'action nécessaire */  break
+          case 'pong':             /* keepalive ok */                         break
+          default:
+            console.debug('[WS] Event non géré :', event.type)
         }
       } catch (err) {
-        console.warn('[WS] parse error', err)
+        console.warn('[WS] Erreur parsing message :', err)
       }
     }
 
-    ws.onerror = () => { /* géré dans onclose */ }
-
     ws.onclose = () => {
-      setWsConnected(false)
-      if (pingRef.current) clearInterval(pingRef.current)
-      if (!mountedRef.current) return
-      // Backoff exponentiel
-      const delay = Math.min(1000 * 2 ** retryRef.current, 30_000)
-      retryRef.current++
-      setTimeout(connect, delay)
+      // Reconnexion avec backoff exponentiel (1s → 30s max)
+      reconnectTimer.current = setTimeout(() => {
+        delayRef.current = Math.min(delayRef.current * 2, MAX_RECONNECT_DELAY)
+        connect()
+      }, delayRef.current)
     }
-  }, [accessToken, setWsConnected, handleForgeComplete, handleCombatResult, handleGradeUp, handleScarEarned, handleFleetArrived])
+
+    ws.onerror = (err) => {
+      console.error('[WS] Erreur :', err)
+      ws.close()
+    }
+  }, [accessToken, handlers])
+
+  // Keepalive ping toutes les 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'ping' }))
+      }
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
-    mountedRef.current = true
-    if (accessToken) connect()
+    connect()
     return () => {
-      mountedRef.current = false
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       wsRef.current?.close()
-      if (pingRef.current) clearInterval(pingRef.current)
     }
-  }, [accessToken, connect])
+  }, [connect])
 
-  /** Envoie un message WebSocket (ex: forge.poll) */
-  const send = useCallback((msg: object) => {
+  // Helper pour polling forge (fallback si WS interrompu)
+  const pollForge = useCallback((forgeId: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg))
+      wsRef.current.send(JSON.stringify({
+        type: 'forge.poll',
+        data: { forge_id: forgeId },
+      }))
     }
   }, [])
 
-  return { send }
+  return { pollForge }
 }

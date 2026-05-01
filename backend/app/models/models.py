@@ -136,6 +136,9 @@ class Player(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     refresh_token: Mapped[str | None] = mapped_column(Text)
     refresh_token_expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    daily_data: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )

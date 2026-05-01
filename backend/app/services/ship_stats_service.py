@@ -209,22 +209,28 @@ def validate_module_slot(
     Règles (GDD §3 + Agent 3 validation serveur) :
       - slot_index doit exister (< total_slots)
       - Les modules level IV/V ne vont que dans des slots premium
-        (index ≥ total_slots - premium_slots)
+        (index >= total_slots - premium_slots)
+
+    Fix Bug #1 : ship.total_slots / ship.premium_slots n'existent pas sur le
+    modèle SQLAlchemy — on calcule depuis _RARITY_SLOTS (déjà disponible).
     """
-    if slot_index < 0 or slot_index >= ship.total_slots:
+    rarity_val = ship.rarity.value if hasattr(ship.rarity, "value") else str(ship.rarity)
+    total_slots, premium_slots = _RARITY_SLOTS.get(rarity_val, (2, 0))
+
+    if slot_index < 0 or slot_index >= total_slots:
         return False, (
             f"Slot {slot_index} invalide pour ce vaisseau "
-            f"({ship.total_slots} slots disponibles)."
+            f"({total_slots} slots disponibles pour la rareté {rarity_val})."
         )
 
-    premium_start = ship.total_slots - ship.premium_slots
+    premium_start = total_slots - premium_slots
     is_premium_slot = slot_index >= premium_start
 
     if module_level in _PREMIUM_REQUIRED_LEVELS and not is_premium_slot:
         return False, (
             f"Les modules de niveau {module_level} nécessitent un slot premium. "
             f"Les slots premium commencent à l'index {premium_start} "
-            f"pour ce vaisseau ({ship.rarity})."
+            f"pour ce vaisseau ({rarity_val})."
         )
 
     return True, ""

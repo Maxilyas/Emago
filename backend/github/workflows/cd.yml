@@ -1,0 +1,64 @@
+# =============================================================================
+# .github/workflows/cd.yml — Déploiement continu
+# Agent 9 — DevOps | Sprint 1
+#
+# Déclencheur : CI réussie sur main (workflow_run)
+# Job : SSH sur VPS → docker compose pull + up
+#
+# Secrets GitHub requis :
+#   VPS_HOST       — IP ou hostname du VPS
+#   VPS_USER       — Utilisateur SSH (ex: emago)
+#   VPS_SSH_KEY    — Clé privée SSH (format PEM)
+#   VPS_DEPLOY_DIR — Chemin du projet sur le VPS (ex: /opt/emago)
+# =============================================================================
+
+name: CD — Deploy to VPS
+
+on:
+  workflow_run:
+    workflows: ["CI — Emago Backend"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to production VPS
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.VPS_DEPLOY_DIR }}
+
+            echo "=== Pull nouvelles images ==="
+            docker compose -f docker-compose.prod.yml pull api
+
+            echo "=== Appliquer migrations Alembic ==="
+            docker compose -f docker-compose.prod.yml run --rm api \
+              /opt/venv/bin/alembic upgrade head
+
+            echo "=== Redémarrer l'API (zero-downtime via recréation) ==="
+            docker compose -f docker-compose.prod.yml up -d --no-deps api
+
+            echo "=== Health check ==="
+            sleep 5
+            curl -sf http://localhost:8000/health || (echo "HEALTH CHECK FAILED" && exit 1)
+
+            echo "=== Déploiement OK ==="
+
+  notify-failure:
+    name: Notify on failure
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    steps:
+      - name: Log failure
+        run: echo "Déploiement échoué — rollback manuel requis"
+        # TODO phase 2 : notification Discord/Slack

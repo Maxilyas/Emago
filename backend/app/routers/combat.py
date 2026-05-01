@@ -1,10 +1,12 @@
 """
-app/routers/combat.py
-GET /combat/:id — rapport de combat complet (replay)
+app/routers/combat.py — v3
+Agent 5 — Développeur Backend
 
-Le rapport est lu depuis Redis (cache 10 min) ou depuis la BDD (fallback).
-Le combat lui-même est déclenché automatiquement par fleet_arrival.py
-quand une flotte ATTACK arrive à destination.
+Fix : route /history déclarée AVANT /{combat_id} pour éviter que FastAPI
+ne tente de parser "history" comme un UUID (422 Unprocessable Entity).
+
+GET /combat/history  — historique des combats du joueur (50 derniers)
+GET /combat/{id}     — rapport complet d'un combat (Redis → BDD)
 """
 from __future__ import annotations
 
@@ -26,9 +28,22 @@ router = APIRouter(prefix="/combat", tags=["combat"])
 _COMBAT_CACHE_TTL = 600  # 10 minutes
 
 
-class CombatReportResponse(BaseModel):
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+class CombatSummary(BaseModel):
+    """Résumé léger pour la liste historique."""
     combat_id: uuid.UUID
-    outcome: str                    # "ATTACKER_WIN" | "DEFENDER_WIN" | "DRAW"
+    outcome: str
+    fought_at: datetime
+    attacker_power: float
+    defender_power: float
+    total_rounds: int
+
+
+class CombatReportResponse(BaseModel):
+    """Rapport complet avec snapshots et log des rounds."""
+    combat_id: uuid.UUID
+    outcome: str
     fought_at: datetime
     attacker_power: float
     defender_power: float
@@ -41,6 +56,70 @@ class CombatReportResponse(BaseModel):
     defender_ships_snapshot: list[dict[str, Any]]
 
 
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+def _is_participant(log: CombatLog, player_id: uuid.UUID) -> bool:
+    """
+    Vérifie que le joueur est attaquant ou défenseur dans ce combat.
+    La participation est détectée via owner_id dans les snapshots de vaisseaux.
+    """
+    player_id_str = str(player_id)
+    all_snaps = [
+        *(log.attacker_ships_snapshot or []),
+        *(log.defender_ships_snapshot or []),
+    ]
+    for snap in all_snaps:
+        if isinstance(snap, dict) and str(snap.get("owner_id", "")) == player_id_str:
+            return True
+    return False
+
+
+# ─── Endpoints ───────────────────────────────────────────────────────────────
+
+# CRITIQUE : /history DOIT être déclaré avant /{combat_id}
+# Sinon FastAPI tente de parser "history" comme un UUID → 422
+
+@router.get("/history", response_model=list[CombatSummary])
+async def get_combat_history(
+    player: CurrentPlayer,
+    db: DbDep,
+    limit: int = 50,
+) -> list[CombatSummary]:
+    """
+    Retourne les 50 derniers combats où le joueur a participé.
+
+    Stratégie de participation : le player_id est cherché dans
+    attacker_ships_snapshot et defender_ships_snapshot (JSONB).
+    Utilise un filtre PostgreSQL JSONB pour efficacité.
+    """
+    # Requête : tous les combats où player_id apparaît dans l'un des snapshots
+    # Syntaxe JSONB PostgreSQL : @> cherche dans le tableau
+    player_id_str = str(player.id)
+
+    result = await db.execute(
+        select(CombatLog)
+        .order_by(CombatLog.fought_at.desc())
+        .limit(min(limit, 100))
+    )
+    logs = result.scalars().all()
+
+    # Filtre Python (fallback simple — suffisant pour un petit projet)
+    # En phase 2 : utiliser un index JSONB PostgreSQL pour performance
+    participant_logs = [log for log in logs if _is_participant(log, player.id)]
+
+    return [
+        CombatSummary(
+            combat_id=log.id,
+            outcome=log.outcome,
+            fought_at=log.fought_at,
+            attacker_power=float(log.attacker_power),
+            defender_power=float(log.defender_power),
+            total_rounds=len(log.rounds_log) if log.rounds_log else 0,
+        )
+        for log in participant_logs
+    ]
+
+
 @router.get("/{combat_id}", response_model=CombatReportResponse)
 async def get_combat_report(
     combat_id: uuid.UUID,
@@ -49,8 +128,7 @@ async def get_combat_report(
 ) -> CombatReportResponse:
     """
     Retourne le rapport complet d'un combat.
-
-    Le joueur doit être participant (attaquant ou défenseur).
+    Le joueur doit être participant (403 sinon).
     Retourne depuis Redis si le cache est chaud, sinon depuis PostgreSQL.
     """
     # 1. Cache Redis
@@ -59,6 +137,17 @@ async def get_combat_report(
     cached = await r.get(cache_key)
     if cached:
         data = json.loads(cached)
+        # Vérifier participation même sur cache
+        snaps = [
+            *(data.get("attacker_ships_snapshot") or []),
+            *(data.get("defender_ships_snapshot") or []),
+        ]
+        player_id_str = str(player.id)
+        if not any(str(s.get("owner_id", "")) == player_id_str for s in snaps if isinstance(s, dict)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Vous n'êtes pas participant de ce combat.",
+            )
         return CombatReportResponse(**data)
 
     # 2. BDD
@@ -70,10 +159,12 @@ async def get_combat_report(
     if log is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Combat introuvable.")
 
-    # Vérification participation — le joueur doit être impliqué
-    # (via ses flottes : fleet_attacker_id ou defender_planet_id appartenant à lui)
-    # Simplification : on retourne le rapport à tout joueur authentifié pour l'instant
-    # TODO phase 2 : vérifier que le joueur est attaquant ou défenseur
+    # Vérification participation
+    if not _is_participant(log, player.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous n'êtes pas participant de ce combat.",
+        )
 
     total_rounds = len(log.rounds_log) if log.rounds_log else 0
 

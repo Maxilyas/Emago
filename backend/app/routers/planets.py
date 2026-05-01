@@ -264,12 +264,41 @@ async def _get_build_queue(planet_id: uuid.UUID, db) -> list[BuildQueue]:
 
 
 async def _create_homeworld(player_id: uuid.UUID, db) -> Planet:
+    """
+    Crée la planète natale du joueur sur une position libre.
+    Cherche la première case non occupée en galaxy=1 pour éviter
+    la violation de contrainte UNIQUE(galaxy, system, position)
+    quand plusieurs joueurs s'inscrivent.
+    """
+    occupied_result = await db.execute(
+        select(Planet.system, Planet.position).where(Planet.galaxy == 1)
+    )
+    occupied_set = {(row.system, row.position) for row in occupied_result}
+
+    galaxy, system, position = 1, 1, 1
+    found = False
+    for sys in range(1, 500):
+        for pos in range(1, 16):
+            if (sys, pos) not in occupied_set:
+                system, position = sys, pos
+                found = True
+                break
+        if found:
+            break
+
+    if not found:
+        galaxy, system, position = 2, 1, 1
+
     planet = Planet(
-        owner_id=player_id, galaxy=1, system=1, position=1,
+        owner_id=player_id,
+        galaxy=galaxy, system=system, position=position,
         name="Terre Natale", is_homeworld=True,
         metal=5000.0, crystal=3000.0, deuterium=1000.0,
         metal_capacity=100000, crystal_capacity=100000, deut_capacity=50000,
-        buildings={"metal_mine": 1, "crystal_mine": 1, "deuterium_synthesizer": 0, "solar_plant": 2, "shipyard": 0, "research_lab": 0},
+        buildings={
+            "metal_mine": 1, "crystal_mine": 1, "deuterium_synthesizer": 0,
+            "solar_plant": 2, "shipyard": 0, "research_lab": 0,
+        },
     )
     db.add(planet)
     await db.flush()

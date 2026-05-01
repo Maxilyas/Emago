@@ -1,6 +1,8 @@
 """
-app/main.py — v1 mise à jour
-Ajoute le router galaxy.
+app/main.py — Sprint 4
+Agent 5 — Développeur Backend
+
+Ajouts Sprint 4 : router alliances enregistré.
 """
 from __future__ import annotations
 
@@ -62,22 +64,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers
-from app.routers import auth, ships, modules, forge, planets, fleets, combat, ranking, scars, galaxy, expeditions, tech
+from app.routers import (
+    auth, ships, modules, forge, planets, fleets,
+    combat, ranking, scars, galaxy, expeditions, tech, daily, alliances,  # ← Sprint 4
+)
 from app.websocket.handler import router as ws_router
 
-app.include_router(auth.router,    prefix="/api/v1")
-app.include_router(ships.router,   prefix="/api/v1")
-app.include_router(modules.router, prefix="/api/v1")
-app.include_router(forge.router,   prefix="/api/v1")
-app.include_router(planets.router, prefix="/api/v1")
-app.include_router(fleets.router,  prefix="/api/v1")
-app.include_router(combat.router,  prefix="/api/v1")
-app.include_router(ranking.router, prefix="/api/v1")
-app.include_router(scars.router,   prefix="/api/v1")
-app.include_router(galaxy.router,  prefix="/api/v1")
+app.include_router(auth.router,       prefix="/api/v1")
+app.include_router(ships.router,      prefix="/api/v1")
+app.include_router(modules.router,    prefix="/api/v1")
+app.include_router(forge.router,      prefix="/api/v1")
+app.include_router(planets.router,    prefix="/api/v1")
+app.include_router(fleets.router,     prefix="/api/v1")
+app.include_router(combat.router,     prefix="/api/v1")
+app.include_router(ranking.router,    prefix="/api/v1")
+app.include_router(scars.router,      prefix="/api/v1")
+app.include_router(galaxy.router,     prefix="/api/v1")
 app.include_router(expeditions.router, prefix="/api/v1")
-app.include_router(tech.router,        prefix="/api/v1")
+app.include_router(tech.router,       prefix="/api/v1")
+app.include_router(daily.router,      prefix="/api/v1")
+app.include_router(alliances.router,  prefix="/api/v1")  # ← Sprint 4
 app.include_router(ws_router)
 
 

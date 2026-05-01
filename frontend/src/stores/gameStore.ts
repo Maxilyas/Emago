@@ -1,53 +1,69 @@
+/**
+ * stores/gameStore.ts — v2
+ * Agent 6 — Développeur Frontend | Sprint 3
+ *
+ * Ajouts Sprint 3 :
+ *   - notifications[] : pile de notifications WS (max 50)
+ *   - addNotification / markAllRead / clearNotifications
+ */
 import { create } from 'zustand'
-import type { CombatResultData, ForgeCompleteData, GradeUpData, ScarEarnedData } from '@/types'
 
 interface Notification {
   id: string
-  type: 'combat' | 'forge' | 'grade_up' | 'scar' | 'fleet'
+  type: string
   title: string
   message: string
-  timestamp: number
+  timestamp: Date
+  read: boolean
   data?: unknown
 }
 
 interface GameState {
-  wsConnected: boolean
+  // Ressources actives (mise à jour par WebSocket / polling)
+  activeResources: {
+    metal: number
+    crystal: number
+    deuterium: number
+    planetId: string | null
+    updatedAt: Date | null
+  }
+
+  // Notifications WebSocket
   notifications: Notification[]
-  pendingCombatResult: CombatResultData | null
-  setWsConnected: (v: boolean) => void
-  addNotification: (n: Omit<Notification, 'id' | 'timestamp'>) => void
-  dismissNotification: (id: string) => void
+
+  // Actions
+  setActiveResources: (r: Partial<GameState['activeResources']>) => void
+  addNotification: (n: Notification) => void
+  markAllRead: () => void
   clearNotifications: () => void
-  setPendingCombatResult: (data: CombatResultData | null) => void
 }
 
-let notifCounter = 0
-
 export const useGameStore = create<GameState>((set) => ({
-  wsConnected: false,
+  activeResources: {
+    metal: 0,
+    crystal: 0,
+    deuterium: 0,
+    planetId: null,
+    updatedAt: null,
+  },
+
   notifications: [],
-  pendingCombatResult: null,
 
-  setWsConnected: (v) => set({ wsConnected: v }),
-
-  addNotification: (n) =>
-    set((state) => ({
-      notifications: [
-        {
-          ...n,
-          id: `notif-${++notifCounter}`,
-          timestamp: Date.now(),
-        },
-        ...state.notifications.slice(0, 19), // max 20 notifs
-      ],
+  setActiveResources: (r) =>
+    set((s) => ({
+      activeResources: { ...s.activeResources, ...r, updatedAt: new Date() },
     })),
 
-  dismissNotification: (id) =>
-    set((state) => ({
-      notifications: state.notifications.filter((n) => n.id !== id),
+  addNotification: (n) =>
+    set((s) => ({
+      // Garder max 50 notifications (FIFO)
+      notifications: [n, ...s.notifications].slice(0, 50),
+    })),
+
+  markAllRead: () =>
+    set((s) => ({
+      notifications: s.notifications.map((n) => ({ ...n, read: true })),
     })),
 
   clearNotifications: () => set({ notifications: [] }),
-
-  setPendingCombatResult: (data) => set({ pendingCombatResult: data }),
 }))

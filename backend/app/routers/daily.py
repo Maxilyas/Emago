@@ -94,13 +94,20 @@ def _today_str() -> str:
     return date.today().isoformat()
 
 
+def _reward_resources(reward: dict) -> dict[str, int]:
+    """Extrait uniquement les champs numériques (ressources) d'une entrée STREAK_REWARDS.
+    Exclut 'label' et tout autre champ non-int pour satisfaire dict[str, int]."""
+    return {k: v for k, v in reward.items() if isinstance(v, int)}
+
+
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
 
 class DailyLoginResponse(BaseModel):
     streak: int
-    reward: dict[str, int]
+    streak_label: str                    # ex: "Jour 1", "Semaine complète ! 🎉"
+    reward: dict[str, int]               # uniquement metal/crystal/deuterium
     next_reward: dict[str, int] | None
     already_claimed: bool
     message: str
@@ -192,8 +199,9 @@ async def claim_daily_login(player: CurrentPlayer, db: DbDep) -> DailyLoginRespo
         next_day = (day % MAX_STREAK_DAY) + 1
         return DailyLoginResponse(
             streak=streak,
-            reward=STREAK_REWARDS[day],
-            next_reward=STREAK_REWARDS[next_day],
+            streak_label=STREAK_REWARDS[day]["label"],
+            reward=_reward_resources(STREAK_REWARDS[day]),
+            next_reward=_reward_resources(STREAK_REWARDS[next_day]),
             already_claimed=True,
             message="Récompense déjà réclamée aujourd'hui.",
         )
@@ -232,8 +240,9 @@ async def claim_daily_login(player: CurrentPlayer, db: DbDep) -> DailyLoginRespo
     next_day = (day % MAX_STREAK_DAY) + 1
     return DailyLoginResponse(
         streak=streak,
-        reward=reward,
-        next_reward=STREAK_REWARDS[next_day],
+        streak_label=reward["label"],
+        reward=_reward_resources(reward),
+        next_reward=_reward_resources(STREAK_REWARDS[next_day]),
         already_claimed=False,
         message=f"{'🎉 ' if day == 7 else ''}Récompense du jour {day} réclamée !",
     )

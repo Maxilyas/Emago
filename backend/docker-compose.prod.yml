@@ -1,0 +1,138 @@
+# =============================================================================
+# docker-compose.prod.yml — Stack production
+# Agent 9 — DevOps | Sprint 1
+#
+# Différences avec docker-compose.yml (dev) :
+#   - Nginx ajouté (SSL termination, WS proxy, static files)
+#   - Certbot ajouté (renouvellement SSL Let's Encrypt)
+#   - Ports db et redis NON exposés (accès interne uniquement)
+#   - Pas de volume hot-reload sur l'API
+#   - restart: always (vs unless-stopped en dev)
+#   - Logs structurés JSON
+#
+# Usage :
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml exec api alembic upgrade head
+# =============================================================================
+
+version: "3.9"
+
+services:
+
+  # ── Base de données ─────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: emago
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: emago
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Pas de ports exposés en prod — accès via réseau interne Docker uniquement
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emago"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Cache Redis ──────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ── API FastAPI ──────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    restart: always
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://emago:${POSTGRES_PASSWORD}@db:5432/emago
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      DEBUG: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    # Pas de ports exposés directement — Nginx proxifie
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ── Nginx reverse proxy ──────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_webroot:/var/www/certbot:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      # Build React statique (généré par CI avant déploiement)
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    networks:
+      - internal
+      - external
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Certbot SSL Let's Encrypt ────────────────────────────────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    restart: "no"
+    volumes:
+      - certbot_webroot:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    # Renouvellement manuel ou via cron sur le VPS :
+    #   docker compose -f docker-compose.prod.yml run --rm certbot renew
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done"
+
+volumes:
+  postgres_data:
+  redis_data:
+  certbot_webroot:
+  certbot_certs:
+
+networks:
+  internal:
+    driver: bridge
+  external:
+    driver: bridge
