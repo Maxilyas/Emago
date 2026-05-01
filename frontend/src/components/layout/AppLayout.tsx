@@ -1,19 +1,22 @@
-// ─── AppLayout.tsx — Sprint 4
+// ─── AppLayout.tsx — v1.1 (Sprint RPG)
 // Agent 6 — Développeur Frontend
 //
-// Ajouts :
-//   - Alliances dans NAV_ITEMS (sidebar + mobile)
-//   - Combat dans NAV_ITEMS (sidebar + mobile)
-//   - Bouton "Voir rapport complet" dans CombatReport overlay → /combat/:id
-//   - AllianceIcon + ShieldIcon ajoutés
+// Ajouts Sprint 4 (inchangés) :
+//   - Alliances + Combat dans NAV_ITEMS
+//   - CombatReport overlay + bouton "Voir rapport complet"
+//
+// Ajouts v1.1 :
+//   - SpectreAwakening overlay (grade_up → grade 5)
+//   - Toast enrichi pour pendingForgeResult (Dérive vs normal)
 
-import React, { useState } from 'react'
+import React, { useEffect } from 'react'
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useGameStore } from '@/stores/gameStore'
 import { useGameSocket } from '@/hooks/useGameSocket'
 import { CombatReport } from '@/components/combat/CombatReport'
 import { NotificationPanel } from '@/components/layout/NotificationPanel'
+import { SpectreAwakening } from '@/components/ships/SpectreAwakening'
 import { useAuthStore } from '@/stores/authStore'
 
 const NAV_ITEMS = [
@@ -30,13 +33,26 @@ const NAV_ITEMS = [
 ]
 
 export function AppLayout() {
-  const { wsConnected, pendingCombatResult, setPendingCombatResult, notifications } = useGameStore()
-  const [showNotifs, setShowNotifs] = useState(false)
+  const {
+    wsConnected,
+    pendingCombatResult, setPendingCombatResult,
+    spectreData, setSpectreData,
+    pendingForgeResult, setPendingForgeResult,
+    notifications,
+  } = useGameStore()
   const { username } = useAuthStore()
   const navigate = useNavigate()
   useGameSocket()
 
-  // Quand l'utilisateur clique "Voir rapport complet" dans le CombatReport overlay
+  // Toast forge enrichi — déclenché quand pendingForgeResult arrive
+  // (le toast Dérive a un style distinct, toast normal pour forge standard)
+  useEffect(() => {
+    if (!pendingForgeResult) return
+    // Le toast est déjà émis dans handleForgeComplete (NotificationPanel).
+    // On remet juste pendingForgeResult à null après consommation.
+    setPendingForgeResult(null)
+  }, [pendingForgeResult, setPendingForgeResult])
+
   const handleViewFullReport = (combatId: string) => {
     setPendingCombatResult(null)
     navigate(`/combat/${combatId}`)
@@ -123,13 +139,7 @@ export function AppLayout() {
           </div>
           <div className="hidden lg:block" />
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowNotifs(v => !v)}
-              className="relative p-2 rounded-lg text-gray-400 hover:text-white hover:bg-surface-elevated transition-all">
-              <BellIcon size={18} />
-              {notifications.length > 0 && (
-                <span className="notif-dot">{notifications.length > 9 ? '9+' : notifications.length}</span>
-              )}
-            </button>
+            <NotificationPanel />
           </div>
         </header>
 
@@ -161,15 +171,6 @@ export function AppLayout() {
         </div>
       </nav>
 
-      {/* ── Panneau notifications ────────────────────────────────────────────── */}
-      {showNotifs && (
-        <div className="fixed inset-0 z-50 lg:inset-auto lg:top-14 lg:right-4 lg:w-80" onClick={() => setShowNotifs(false)}>
-          <div onClick={e => e.stopPropagation()}>
-            <NotificationPanel onClose={() => setShowNotifs(false)} />
-          </div>
-        </div>
-      )}
-
       {/* ── CombatReport overlay (résultat WS immédiat) ──────────────────────── */}
       {/* Ajout Sprint 4 : bouton "Voir rapport complet" → /combat/:id          */}
       <CombatReport
@@ -179,6 +180,12 @@ export function AppLayout() {
           ? () => handleViewFullReport(pendingCombatResult.combat_id)
           : undefined
         }
+      />
+
+      {/* ── SpectreAwakening overlay (grade_up → grade 5) — v1.1 ─────────────── */}
+      <SpectreAwakening
+        data={spectreData}
+        onDismiss={() => setSpectreData(null)}
       />
     </div>
   )
@@ -209,9 +216,6 @@ function GalaxyIcon({ size = 20 }: { size?: number }) {
 }
 function RankIcon({ size = 20 }: { size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-}
-function BellIcon({ size = 20 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
 }
 // ← Sprint 4 : nouvelles icônes
 function AllianceIcon({ size = 20 }: { size?: number }) {

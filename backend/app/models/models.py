@@ -315,6 +315,28 @@ class Ship(Base):
     grade4_immunity_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     grade4_immunity_reset_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
+    # ── Champs RPG narratifs — Sprint 1.1 ─────────────────────────────────
+    # Nom procédural (RARE+) — ex: "Astraeus Noir". NULL pour COMMON/UNCOMMON.
+    name: Mapped[str | None] = mapped_column(
+        String(64), nullable=True,
+        comment="Nom procédural généré à la construction pour RARE+"
+    )
+
+    # Trait narratif — tiré à la construction pour tous les vaisseaux.
+    # Format JSONB : {"key": "bounty_hunter", "name": "...", "description": "..."}
+    # NULL pour les vaisseaux antérieurs à la migration 0006.
+    trait: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True,
+        comment={"key": str, "name": str, "description": str}
+    )
+
+    # Drapeau Dérive — True uniquement pour les vaisseaux issus d\'une Forge Dérive.
+    # Affiché distinctement dans l\'UI (badge violet pâle, bordure en pointillé).
+    is_drift: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"),
+        comment="True si issu d\'une Forge Dérive (5% chance)"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )

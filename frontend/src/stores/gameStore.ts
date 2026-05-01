@@ -1,12 +1,21 @@
 /**
- * stores/gameStore.ts — v2
- * Agent 6 — Développeur Frontend | Sprint 3
+ * stores/gameStore.ts — v1.1
+ * Agent 6 — Développeur Frontend | Sprint RPG
  *
- * Ajouts Sprint 3 :
- *   - notifications[] : pile de notifications WS (max 50)
- *   - addNotification / markAllRead / clearNotifications
+ * Ajouts v1.1 :
+ *   - pendingCombatResult   : déjà présent (inchangé)
+ *   - spectreData           : NOUVEAU — déclenche SpectreAwakening quand grade_up → 5
+ *   - pendingForgeResult    : NOUVEAU — stocke le résultat forge.complete pour
+ *                             afficher un toast enrichi (nom, Dérive) depuis AppLayout
+ *
+ * Architecture : les overlays fullscreen (CombatReport, SpectreAwakening) sont montés
+ * dans AppLayout pour être disponibles sur toutes les routes. Le store est le canal
+ * de communication entre useWsEventHandlers (NotificationPanel) et AppLayout.
  */
 import { create } from 'zustand'
+import type { SpectreAwakeningData } from '@/components/ships/SpectreAwakening'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Notification {
   id: string
@@ -18,8 +27,36 @@ interface Notification {
   data?: unknown
 }
 
+/** Données minimales du résultat forge stockées pour l'affichage AppLayout */
+export interface PendingForgeResult {
+  forge_id: string
+  new_ship_id: string
+  rarity: string
+  name: string | null
+  is_drift: boolean
+  trait: { key: string; name: string; description: string } | null
+}
+
+/** État complet d'un rapport de combat (existant — inchangé) */
+export interface PendingCombatResult {
+  combat_id: string
+  winner: 'ATTACKER' | 'DEFENDER' | 'DRAW'
+  total_rounds: number
+  attacker_power: number
+  defender_power: number
+  ships_lost: { attacker: string[]; defender: string[] }
+  xp_diff: Record<string, number>
+  loot: { metal?: number; crystal?: number; deuterium?: number }
+  grade_ups: Array<{ ship_id: string; owner_id: string; old_grade: number; new_grade: number; combat_xp: number }>
+  scars: Array<{ ship_id: string; owner_id: string; tag: string }>
+  synergies: { attacker: string[]; defender: string[] }
+}
+
 interface GameState {
-  // Ressources actives (mise à jour par WebSocket / polling)
+  // Connexion WebSocket
+  wsConnected: boolean
+
+  // Ressources actives
   activeResources: {
     metal: number
     crystal: number
@@ -28,17 +65,30 @@ interface GameState {
     updatedAt: Date | null
   }
 
-  // Notifications WebSocket
+  // Overlays WS
+  pendingCombatResult: PendingCombatResult | null
+  spectreData: SpectreAwakeningData | null         // ← NOUVEAU
+  pendingForgeResult: PendingForgeResult | null     // ← NOUVEAU
+
+  // Notifications
   notifications: Notification[]
 
   // Actions
   setActiveResources: (r: Partial<GameState['activeResources']>) => void
+  setPendingCombatResult: (d: PendingCombatResult | null) => void
+  setWsConnected: (v: boolean) => void
+  setSpectreData: (d: SpectreAwakeningData | null) => void          // ← NOUVEAU
+  setPendingForgeResult: (d: PendingForgeResult | null) => void     // ← NOUVEAU
   addNotification: (n: Notification) => void
   markAllRead: () => void
   clearNotifications: () => void
 }
 
+// ─── Store ────────────────────────────────────────────────────────────────────
+
 export const useGameStore = create<GameState>((set) => ({
+  wsConnected: false,
+
   activeResources: {
     metal: 0,
     crystal: 0,
@@ -47,6 +97,10 @@ export const useGameStore = create<GameState>((set) => ({
     updatedAt: null,
   },
 
+  pendingCombatResult: null,
+  spectreData:         null,    // ← NOUVEAU
+  pendingForgeResult:  null,    // ← NOUVEAU
+
   notifications: [],
 
   setActiveResources: (r) =>
@@ -54,9 +108,13 @@ export const useGameStore = create<GameState>((set) => ({
       activeResources: { ...s.activeResources, ...r, updatedAt: new Date() },
     })),
 
+  setPendingCombatResult: (d) => set({ pendingCombatResult: d }),
+  setWsConnected:         (v) => set({ wsConnected: v }),
+  setSpectreData:         (d) => set({ spectreData: d }),          // ← NOUVEAU
+  setPendingForgeResult:  (d) => set({ pendingForgeResult: d }),   // ← NOUVEAU
+
   addNotification: (n) =>
     set((s) => ({
-      // Garder max 50 notifications (FIFO)
       notifications: [n, ...s.notifications].slice(0, 50),
     })),
 

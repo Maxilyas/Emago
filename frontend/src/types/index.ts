@@ -1,5 +1,7 @@
 // ============================================================
-// Types Emago — calés 1:1 sur FRONTEND_SPEC.md
+// Types Emago — v1.1
+// Ajouts RPG : ShipTrait, champs name/trait/is_drift,
+//              ForgeCompleteData enrichi, ForgeCompleteEvent
 // ============================================================
 
 // Auth
@@ -19,6 +21,13 @@ export type FleetMission = 'ATTACK' | 'TRANSPORT' | 'ESPIONAGE' | 'COLONIZE' | '
 export type ShipType =
   | 'frigate_attack' | 'frigate_defense' | 'frigate_support'
   | 'frigate_exploration' | 'cruiser_attack' | 'cruiser_defense'
+
+// ── Trait narratif RPG v1.1 ──────────────────────────────────────────────────
+export interface ShipTrait {
+  key: string
+  name: string
+  description: string
+}
 
 // Stats
 export interface BaseStats {
@@ -58,6 +67,10 @@ export interface ShipSummary {
   grade: number
   status: ShipStatus
   planet_id: string | null
+  // ── Champs RPG v1.1 ──
+  name: string | null       // "Astraeus Noir" ou null (COMMON/UNCOMMON)
+  trait: ShipTrait | null   // null pour les vaisseaux antérieurs à migration 0006
+  is_drift: boolean         // true = issu d'une Forge Dérive
 }
 
 export interface ShipDetail {
@@ -70,7 +83,11 @@ export interface ShipDetail {
   status: ShipStatus
   parent_ship_id: string | null
   base_stats: BaseStats
-  current_stats: CurrentStats
+  current_stats: CurrentStats  // NE JAMAIS calculer côté client
+  // ── Champs RPG v1.1 ──
+  name: string | null
+  trait: ShipTrait | null
+  is_drift: boolean
 }
 
 export interface BuildShipRequest {
@@ -87,6 +104,10 @@ export interface BuildShipResponse {
   slots_total: number
   slots_premium: number
   pedigree_applied: boolean
+  // ── Champs RPG v1.1 ──
+  trait: ShipTrait
+  name: string | null
+  is_drift: boolean
 }
 
 // Modules
@@ -173,7 +194,8 @@ export interface RankingEntry {
   alliance_tag: string | null
 }
 
-// WebSocket events
+// ── WebSocket events ─────────────────────────────────────────────────────────
+
 export interface WsEvent<T = unknown> {
   type: string
   data: T
@@ -187,6 +209,16 @@ export interface ForgeCompleteData {
   combat_xp: number
   slots_total: number
   slots_premium: number
+  // ── Champs RPG v1.1 ──
+  trait: ShipTrait | null
+  name: string | null
+  is_drift: boolean
+}
+
+/** Alias typé pour l'event WS forge.complete — utilisé dans NotificationPanel */
+export interface ForgeCompleteEvent {
+  type: 'forge.complete'
+  data: ForgeCompleteData
 }
 
 export interface CombatResultData {
@@ -223,7 +255,8 @@ export interface FleetArrivedData {
   target_planet_id: string | null
 }
 
-// Config UI
+// ── Config UI ────────────────────────────────────────────────────────────────
+
 export const RARITY_CONFIG: Record<Rarity, { color: string; label: string; tw: string }> = {
   COMMON:    { color: '#9E9E9E', label: 'Commun',     tw: 'text-gray-400 border-gray-500' },
   UNCOMMON:  { color: '#4CAF50', label: 'Peu commun', tw: 'text-green-400 border-green-500' },
@@ -233,12 +266,12 @@ export const RARITY_CONFIG: Record<Rarity, { color: string; label: string; tw: s
 }
 
 export const GRADE_CONFIG: Record<number, { name: string; xp: number }> = {
-  0: { name: 'Recrue',   xp: 0 },
-  1: { name: 'Vétéran',  xp: 500 },
-  2: { name: 'Élite',    xp: 2000 },
-  3: { name: 'Légion',   xp: 6000 },
-  4: { name: 'Légende',  xp: 15000 },
-  5: { name: 'Spectre',  xp: 40000 },
+  0: { name: 'Recrue',  xp: 0 },
+  1: { name: 'Vétéran', xp: 500 },
+  2: { name: 'Élite',   xp: 2000 },
+  3: { name: 'Légion',  xp: 6000 },
+  4: { name: 'Légende', xp: 15000 },
+  5: { name: 'Spectre', xp: 40000 },
 }
 
 export const SHIP_TYPE_CONFIG: Record<ShipType, { label: string; icon: string; class: ShipClass }> = {
@@ -256,7 +289,7 @@ export const MODULE_CONFIG: Record<ModuleType, { label: string; stat: string; ic
   CANNON:    { label: 'Canon',           stat: 'dps',          icon: '💥' },
   EMITTER:   { label: 'Émetteur',        stat: 'support_aura', icon: '📡' },
   SHIELD:    { label: 'Bouclier',        stat: 'shield',       icon: '🛡️' },
-  CARGO:     { label: 'Cargo amélioré', stat: 'cargo',        icon: '📦' },
+  CARGO:     { label: 'Cargo amélioré',  stat: 'cargo',        icon: '📦' },
 }
 
 export const FORGE_COSTS: Record<ShipType, { metal: number; crystal: number; deuterium: number }> = {
