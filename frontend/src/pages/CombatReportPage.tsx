@@ -34,12 +34,16 @@ interface CombatReport {
 
 interface RoundLog {
   round: number
-  attacker_dps: number
-  defender_dps: number
-  attacker_hull_remaining: number
-  defender_hull_remaining: number
+  synergies?: string[]
+  attackers_before?: Array<{ ship_id: string; hull: number; shield: number; dps: number }>
+  defenders_before?: Array<{ ship_id: string; hull: number; shield: number; dps: number }>
+  attackers_after?: Array<{ ship_id: string; hull: number; alive: boolean }>
+  defenders_after?: Array<{ ship_id: string; hull: number; alive: boolean }>
+  hits?: Array<{ attacker_id: string; defender_id: string; damage: number }>
+  // champs optionnels pour compatibilité future
+  attacker_dps?: number
+  defender_dps?: number
   ships_destroyed?: string[]
-  synergies_active?: string[]
   xp_earned?: Record<string, number>
   scars_earned?: Array<{ ship_id: string; tag: string }>
 }
@@ -120,7 +124,7 @@ export function CombatReportPage() {
 
   const { data: report, isLoading, error } = useQuery<CombatReport>({
     queryKey: ['combat', id],
-    queryFn: () => api.get(`/combat/${id}`).then(r => r.json()),
+    queryFn: () => api.get<CombatReport>(`/combat/${id}`),
     enabled: !!id,
     retry: false,
   })
@@ -133,9 +137,17 @@ export function CombatReportPage() {
 
   if (error || !report) return (
     <EmptyState
+      icon="⚔️"
       title="Combat introuvable"
-      description="Ce rapport n'existe pas ou vous n'êtes pas participant."
-      action={{ label: 'Retour', onClick: () => navigate(-1) }}
+      message="Ce rapport n'existe pas ou vous n'êtes pas participant."
+      action={
+        <button
+          onClick={() => navigate(-1)}
+          className="mt-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+        >
+          ← Retour
+        </button>
+      }
     />
   )
 
@@ -220,25 +232,65 @@ export function CombatReportPage() {
           <div className="divide-y divide-gray-700/50 max-h-96 overflow-y-auto">
             {report.rounds_log.map((round) => (
               <div key={round.round} className="p-3 hover:bg-gray-700/20 transition-colors">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400 font-mono">Round {round.round}</span>
-                  <div className="flex gap-4 text-xs">
-                    <span className="text-blue-300">ATK DPS : {fmt(round.attacker_dps)}</span>
-                    <span className="text-red-300">DEF DPS : {fmt(round.defender_dps)}</span>
+
+                {/* Ligne titre du round */}
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span className="text-white font-bold font-mono">Round {round.round}</span>
+                  {round.synergies && round.synergies.length > 0 && (
+                    <span className="text-cyan-400 text-xs">✨ {round.synergies.join(' · ')}</span>
+                  )}
+                </div>
+
+                {/* Tableau attaquants / défenseurs */}
+                <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                  {/* Attaquants avant le round */}
+                  <div>
+                    <p className="text-blue-400 font-semibold mb-1">⚔️ Attaquants</p>
+                    {(round.attackers_before ?? []).map((s, i) => (
+                      <div key={i} className="flex items-center justify-between bg-blue-900/10 rounded px-2 py-1 mb-0.5">
+                        <span className="text-gray-300 font-mono text-[10px]">{s?.ship_id?.slice(0,6) ?? '?'}…</span>
+                        <span className="text-blue-300">❤️ {Math.round(s?.hull ?? 0)}</span>
+                        <span className="text-orange-300">⚔️ {Math.round(s?.dps ?? 0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Défenseurs avant le round */}
+                  <div>
+                    <p className="text-red-400 font-semibold mb-1">🛡️ Défenseurs</p>
+                    {(round.defenders_before ?? []).map((s, i) => (
+                      <div key={i} className="flex items-center justify-between bg-red-900/10 rounded px-2 py-1 mb-0.5">
+                        <span className="text-gray-300 font-mono text-[10px]">{s?.ship_id?.slice(0,6) ?? '?'}…</span>
+                        <span className="text-blue-300">❤️ {Math.round(s?.hull ?? 0)}</span>
+                        <span className="text-orange-300">⚔️ {Math.round(s?.dps ?? 0)}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                {round.ships_destroyed && round.ships_destroyed.length > 0 && (
-                  <p className="text-red-400 text-xs mt-1">
-                    💥 {round.ships_destroyed.length} vaisseau(x) détruit(s)
-                  </p>
-                )}
-                {round.scars_earned && round.scars_earned.length > 0 && (
-                  <div className="mt-1 space-y-0.5">
-                    {round.scars_earned.map((scar, i) => (
-                      <p key={i} className="text-orange-300 text-xs italic">🩹 {scar.tag}</p>
+
+                {/* Frappes du round */}
+                {round.hits && round.hits.length > 0 && (
+                  <div className="mb-1">
+                    {round.hits.map((hit, i) => (
+                      <p key={i} className="text-gray-500 text-[10px]">
+                        {hit?.attacker_id?.slice(0,6) ?? '?'}… → {hit?.defender_id?.slice(0,6) ?? '?'}… : -{Math.round(hit?.damage ?? 0)} dégâts
+                      </p>
                     ))}
                   </div>
                 )}
+
+                {/* Résultat : destructions */}
+                {(() => {
+                  const attDestroyed = round.attackers_after?.filter(s => !s.alive).length ?? 0
+                  const defDestroyed = round.defenders_after?.filter(s => !s.alive).length ?? 0
+                  if (attDestroyed === 0 && defDestroyed === 0) return null
+                  return (
+                    <div className="flex gap-3 mt-1">
+                      {attDestroyed > 0 && <p className="text-red-400 text-xs">💥 {attDestroyed} attaquant(s) détruit(s)</p>}
+                      {defDestroyed > 0 && <p className="text-red-400 text-xs">💥 {defDestroyed} défenseur(s) détruit(s)</p>}
+                    </div>
+                  )
+                })()}
+
               </div>
             ))}
           </div>

@@ -34,7 +34,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import CombatLog, Ship, ShipScar
+from app.models.models import CombatLog, Ship, ShipScar, ShipStatus
 from app.services.ship_stats_service import (
     GRADE_SHIELD_REGEN,
     get_current_stats,
@@ -595,11 +595,13 @@ async def resolve_combat(
             continue
 
         if not cs.alive:
-            # Vaisseau détruit — XP perdue (GDD §4)
-            ship_db.combat_xp = 0
-            ship_db.grade = 0
-            db.add(ship_db)
+            # Vaisseau détruit — supprimé de la base (GDD §4 : perd toute son XP)
+            # Le vaisseau disparaît définitivement du hangar du joueur
+            await db.delete(ship_db)
             continue
+
+        # Vaisseau survivant — remettre à DOCKED (il rentre au hangar)
+        ship_db.status = ShipStatus.DOCKED
 
         # Ajout XP
         old_grade = ship_db.grade
