@@ -55,6 +55,19 @@ class FleetResponse(BaseModel):
     ship_count: int
 
 
+class IncomingFleetResponse(BaseModel):
+    """Flotte ennemie en approche — visible par le défenseur."""
+    fleet_id: uuid.UUID
+    mission: str
+    target_galaxy: int
+    target_system: int
+    target_position: int
+    target_planet_id: uuid.UUID | None
+    arrives_at: datetime
+    ship_count: int
+    # Note : on ne révèle PAS origin_planet_id ni owner_id (info militaire)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -111,12 +124,65 @@ async def list_fleets(player: CurrentPlayer, db: DbDep) -> list[FleetResponse]:
         count = count_result.scalar() or 0
         out.append(FleetResponse(
             fleet_id=f.id,
-            mission=f.mission.value,
+            mission=f.mission.value if hasattr(f.mission, 'value') else f.mission,
             origin_planet_id=f.origin_planet_id,
             target_galaxy=f.target_galaxy or 0,
             target_system=f.target_system or 0,
             target_position=f.target_position or 0,
             departed_at=f.departed_at,
+            arrives_at=f.arrives_at,
+            ship_count=count,
+        ))
+    return out
+
+
+# IMPORTANT : /incoming doit être AVANT /{fleet_id} pour éviter le conflit de route
+@router.get("/incoming", response_model=list[IncomingFleetResponse])
+async def list_incoming_fleets(player: CurrentPlayer, db: DbDep) -> list[IncomingFleetResponse]:
+    """
+    Retourne les flottes ennemies en approche vers les planètes du joueur.
+    Permet au défenseur de voir une attaque arriver et de se préparer.
+
+    Stratégie : cherche les flottes dont target_planet_id appartient au joueur,
+    non rappelées, pas encore arrivées.
+    """
+    from sqlalchemy import text as sql_text
+
+    # Récupérer les IDs des planètes du joueur
+    planets_result = await db.execute(
+        select(Planet.id).where(Planet.owner_id == player.id)
+    )
+    my_planet_ids = [row[0] for row in planets_result]
+
+    if not my_planet_ids:
+        return []
+
+    # Flottes ennemies qui ciblent mes planètes, pas encore arrivées, pas rappelées
+    now = datetime.now(UTC)
+    result = await db.execute(
+        select(Fleet).where(
+            Fleet.target_planet_id.in_(my_planet_ids),
+            Fleet.owner_id != player.id,          # flottes ennemies uniquement
+            Fleet.is_recalled == False,            # noqa: E712
+            Fleet.arrives_at > now,               # pas encore arrivées
+        )
+    )
+    incoming = result.scalars().all()
+
+    out = []
+    for f in incoming:
+        count_result = await db.execute(
+            sql_text("SELECT COUNT(*) FROM fleet_ships WHERE fleet_id = :fid"),
+            {"fid": str(f.id)},
+        )
+        count = count_result.scalar() or 0
+        out.append(IncomingFleetResponse(
+            fleet_id=f.id,
+            mission=f.mission.value if hasattr(f.mission, "value") else f.mission,
+            target_galaxy=f.target_galaxy or 0,
+            target_system=f.target_system or 0,
+            target_position=f.target_position or 0,
+            target_planet_id=f.target_planet_id,
             arrives_at=f.arrives_at,
             ship_count=count,
         ))
@@ -235,21 +301,26 @@ async def send_fleet(
         arrives_at=arrives_at,
     )
     db.add(fleet)
+    await db.flush()  # Flush obligatoire : écrit la flotte en base AVANT d'insérer
+                      # fleet_ships qui a une FK sur fleets.id. Sans flush, PostgreSQL
+                      # lève ForeignKeyViolationError car la ligne n'existe pas encore.
 
     # Mise à jour statut vaisseaux → IN_FLEET
     for ship in ships:
         ship.status = ShipStatus.IN_FLEET
         db.add(ship)
 
-    # Association fleet_ships
-    await db.execute(
-        text("INSERT INTO fleet_ships (fleet_id, ship_id) VALUES (:fid, :sid)"),
-        [{"fid": str(fleet.id), "sid": str(s.id)} for s in ships],
-    )
+    # Association fleet_ships — INSERT un par un (SQLAlchemy async ne supporte
+    # pas executemany via text() — chaque appel doit être une seule ligne)
+    for ship in ships:
+        await db.execute(
+            text("INSERT INTO fleet_ships (fleet_id, ship_id) VALUES (:fid, :sid)"),
+            {"fid": str(fleet.id), "sid": str(ship.id)},
+        )
 
     return FleetResponse(
         fleet_id=fleet.id,
-        mission=fleet.mission.value,
+        mission=fleet.mission.value if hasattr(fleet.mission, 'value') else fleet.mission,
         origin_planet_id=fleet.origin_planet_id,
         target_galaxy=fleet.target_galaxy,
         target_system=fleet.target_system,

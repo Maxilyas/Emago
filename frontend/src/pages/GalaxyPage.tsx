@@ -19,6 +19,18 @@ import { fmt, fmtCountdown } from '@/lib/utils'
 import type { ShipSummary, FleetResponse } from '@/types'
 import { shipsApi } from '@/api/ships'
 import { GalaxyMap } from '@/components/galaxy/GalaxyMap'
+import type { SystemPlanet } from '@/components/galaxy/GalaxyMap'
+
+interface IncomingFleet {
+  fleet_id: string
+  mission: string
+  target_galaxy: number
+  target_system: number
+  target_position: number
+  target_planet_id: string | null
+  arrives_at: string
+  ship_count: number
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -251,10 +263,17 @@ export function GalaxyPage() {
     queryFn: () => api.get<{ id: string; name: string }[]>('/planets'),
   })
 
-  // Flottes actives
+  // Mes flottes en transit
   const { data: fleets } = useQuery({
     queryKey: ['fleets'],
     queryFn: () => api.get<FleetResponse[]>('/fleets'),
+    refetchInterval: 10_000,
+  })
+
+  // Flottes ennemies en approche (défenseur)
+  const { data: incomingFleets } = useQuery({
+    queryKey: ['fleets', 'incoming'],
+    queryFn: () => api.get<IncomingFleet[]>('/fleets/incoming'),
     refetchInterval: 10_000,
   })
 
@@ -351,6 +370,36 @@ export function GalaxyPage() {
                     Rappeler
                   </button>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Flottes ennemies en approche */}
+      {incomingFleets && incomingFleets.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide mb-3 flex items-center gap-2" style={{ color: '#E53935' }}>
+            ⚠️ FLOTTES ENNEMIES EN APPROCHE ({incomingFleets.length})
+          </h2>
+          <div className="space-y-2">
+            {incomingFleets.map(fleet => (
+              <div
+                key={fleet.fleet_id}
+                className="panel flex items-center justify-between gap-3 border"
+                style={{ borderColor: 'rgba(229,57,53,0.5)', background: 'rgba(229,57,53,0.08)' }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">⚔️</span>
+                  <div>
+                    <p className="text-sm font-bold text-red-400">{fleet.mission}</p>
+                    <p className="text-xs text-gray-400">
+                      → G{fleet.target_galaxy}:S{fleet.target_system}:P{fleet.target_position}
+                      · {fleet.ship_count} vaisseau{fleet.ship_count > 1 ? 'x' : ''}
+                    </p>
+                  </div>
+                </div>
+                <FleetCountdown arrivesAt={fleet.arrives_at} />
               </div>
             ))}
           </div>

@@ -644,23 +644,55 @@ async def resolve_combat(
     attacker_owner_id = att_ships_db[0].owner_id if att_ships_db else None
     defender_owner_id = def_ships_db[0].owner_id if def_ships_db else None
 
+    # Snapshots des vaisseaux pour le rapport (colonnes réelles du modèle CombatLog)
+    att_snapshot = [
+        {
+            "ship_id":       str(cs.ship_id),
+            "owner_id":      str(cs.owner_id),
+            "ship_type":     next((s.ship_type for s in att_ships_db if s.id == cs.ship_id), ""),
+            "rarity":        cs.rarity.value if hasattr(cs.rarity, "value") else cs.rarity,
+            "grade":         cs.grade,
+            "class":         cs.ship_class,
+            "hull_at_start": cs.hull_max,
+            "hull_at_end":   max(0, cs.hull),
+            "destroyed":     not cs.alive,
+            "xp_earned":     cs.xp_earned,
+        }
+        for cs in att_combatants
+    ]
+    def_snapshot = [
+        {
+            "ship_id":       str(cs.ship_id),
+            "owner_id":      str(cs.owner_id),
+            "ship_type":     next((s.ship_type for s in def_ships_db if s.id == cs.ship_id), ""),
+            "rarity":        cs.rarity.value if hasattr(cs.rarity, "value") else cs.rarity,
+            "grade":         cs.grade,
+            "class":         cs.ship_class,
+            "hull_at_start": cs.hull_max,
+            "hull_at_end":   max(0, cs.hull),
+            "destroyed":     not cs.alive,
+            "xp_earned":     cs.xp_earned,
+        }
+        for cs in def_combatants
+    ]
+
+    # Outcome → colonne réelle du modèle (ATTACKER_WIN / DEFENDER_WIN / DRAW)
+    outcome_map = {"ATTACKER": "ATTACKER_WIN", "DEFENDER": "DEFENDER_WIN", "DRAW": "DRAW"}
+    outcome = outcome_map.get(winner, "DRAW")
+
     combat_log = CombatLog(
         id=combat_id,
-        attacker_fleet_id=attacker_fleet_id,
+        fleet_attacker_id=attacker_fleet_id,
         defender_planet_id=defender_planet_id,
-        attacker_owner_id=attacker_owner_id,
-        defender_owner_id=defender_owner_id,
-        winner=winner,
-        combat_seed=combat_seed,
-        rounds=[r.to_dict() for r in rounds],
-        total_rounds=len(rounds),
+        outcome=outcome,
+        pillaged_metal=float(loot.get("metal", 0)) if loot else 0.0,
+        pillaged_crystal=float(loot.get("crystal", 0)) if loot else 0.0,
+        pillaged_deuterium=float(loot.get("deuterium", 0)) if loot else 0.0,
+        rounds_log=[r.to_dict() for r in rounds],
+        attacker_ships_snapshot=att_snapshot,
+        defender_ships_snapshot=def_snapshot,
         attacker_power=round(att_power, 2),
         defender_power=round(def_power, 2),
-        synergies_attacker=att_synergie_log,
-        synergies_defender=def_synergie_log,
-        xp_audit_attacker=att_xp_audit,
-        xp_audit_defender=def_xp_audit,
-        loot=loot or {},
         fought_at=datetime.now(UTC),
     )
     db.add(combat_log)
@@ -749,7 +781,7 @@ async def _build_combatants(
         cs = CombatShip(
             ship_id=ship.id,
             owner_id=ship.owner_id,
-            ship_class=ship.ship_class,
+            ship_class=ship.class_.value if hasattr(ship.class_, 'value') else ship.class_,
             rarity=ship.rarity,
             grade=ship.grade,
             base_hull=ship.base_stats.get("hull", 0),
