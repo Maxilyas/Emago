@@ -54,7 +54,7 @@
 | 11 | Injection SQL via JSONB | ÉLEVÉ | ✅ FAIT (SQLAlchemy paramétrisé partout) |
 | 12 | Vérification participation /combat/{id} | ÉLEVÉ | ✅ FAIT (helper `_is_participant` → 403 si non participant, 404 si introuvable) |
 | 13 | Pedigree avec parent d'autrui | ÉLEVÉ | ✅ FAIT (`_validate_pedigree_parent` 403 si owner ≠) |
-| 14 | Rate limiting | ÉLEVÉ | ✅ FAIT | Custom Redis sliding window (`middleware/rate_limit.py`) branché sur : `POST /auth/register` (5/min par IP), `POST /auth/login` (10/min par IP), `POST /ships/build` (10/min), `POST /forge` (5/min), `POST /fleets` (20/min), `PUT /ships/{id}/modules/{slot}` (30/min) |
+| 14 | Rate limiting | ÉLEVÉ | ✅ FAIT | Custom Redis sliding window (`middleware/rate_limit.py`) branché sur : `POST /auth/register` (5/min par IP), `POST /auth/login` (10/min par IP), **`POST /auth/refresh` (30/min par IP)**, `POST /ships/build` (10/min), `POST /forge` (5/min), `POST /fleets` (20/min), `PUT /ships/{id}/modules/{slot}` (30/min) |
 | 27 | JWT dans l'URL WebSocket (logs nginx) | MOYEN | ✅ FAIT | Token envoyé en premier message JSON après connexion (plus dans `?token=`). Voir `websocket/handler.py` et `useGameSocket.ts` |
 
 ### Moyens
@@ -75,7 +75,8 @@
 | # | Vecteur | Risque | Statut |
 |---:|---|---|---|
 | 23 | Scaling WebSocket horizontal (sticky) | FAIBLE | ⚠️ Préparé (Redis pub/sub) — pas encore activé |
-| 24 | Filtrage JSONB combat_logs en mémoire (Python) | FAIBLE | ✅ FAIT | Remplacé par filtre PostgreSQL `@>` côté BDD (`CombatLog.attacker_ships_snapshot.contains(...)`) — plus de chargement de 100 lignes + tri Python |
+| 24 | Filtrage JSONB combat_logs en mémoire (Python) | FAIBLE | ✅ FAIT | Remplacé par filtre PostgreSQL `@>` côté BDD (`CombatLog.attacker_ships_snapshot.contains(...)`) — plus de chargement de 100 lignes + tri Python. Index GIN `jsonb_path_ops` ajouté (migration 0007) pour performance |
+| 28 | Lecture statut forge sans vérif ownership (Redis cache) | ÉLEVÉ | ✅ FAIT | `GET /forge/{id}` vérifie `cached["player_id"] == player.id` avant retour. Entrées anciennes sans player_id → fallback BDD (ownership vérifié en BDD). Si player_id différent → 404 |
 | 25 | Heartbeat WS server-side (timeout) | FAIBLE | ⚠️ TODO |
 
 ---

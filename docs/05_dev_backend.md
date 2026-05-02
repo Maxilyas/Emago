@@ -16,7 +16,8 @@ backend/
 │       ├── 0003_add_player_daily_data.py
 │       ├── 0004_alliances.py
 │       ├── 0005_expedition_logs_table.py
-│       └── 0006_ship_rpg_fields.py
+│       ├── 0006_ship_rpg_fields.py
+│       └── 0007_combat_logs_gin_index.py
 ├── app/
 │   ├── main.py                    # FastAPI app + lifespan + CORS + routers + scheduler
 │   ├── core/
@@ -171,7 +172,7 @@ Fonctions clés :
   5. Loop max 50 rounds, break si une face exterminée.
   6. Vainqueur calculé. XP par côté.
   7. Pour chaque ship : si détruit → `db.delete()` ; si survivant → update xp/grade/status DOCKED.
-  8. Cicatrices : `_should_earn_scar` → INSERT `ShipScar`.
+  8. Cicatrices : précharge `all_scar_tags` depuis BDD (SELECT ScarTag), `_should_earn_scar` → `ShipScar(tag_id=scar_tag.id)`.
   9. INSERT `CombatLog` (snapshots JSONB, rounds_log).
   10. `_broadcast_combat_events` HORS transaction : WS `combat.result` aux 2 owners, `ship.grade_up`, `ship.scar_earned`.
 
@@ -193,7 +194,7 @@ Fonctions :
   - 404 si manquants, 403 si owner ≠, 422 si type/rareté différents ou LEGENDARY, 409 si statut ≠ DOCKED ou pas planet_id.
   - SELECT FOR UPDATE planète, déduit ressources × 3.
   - Statut 2 parents → IN_FORGE, INSERT ForgeQueue (completed_at = now + 8h).
-  - `_store_forge_status(0%)` Redis, invalidate_hangar_cache.
+  - `_store_forge_status(0%, player_id=player_id)` Redis (inclut le player_id dans le payload), invalidate_hangar_cache.
 - `finalize_forge(db, forge_entry)` :
   - SELECT FOR UPDATE parents.
   - `new_rarity = _RARITY_UPGRADE[rarity]`.
@@ -267,7 +268,9 @@ Tous montés avec préfixe `/api/v1`. Détails complets de chaque endpoint (vali
 3 endpoints :
 - `POST /auth/register` : rate limit 5/min par IP, stocke `hash_refresh_token()` en `players.refresh_token`.
 - `POST /auth/login` : rate limit 10/min par IP, 401 anti-énumération, met à jour le hash du refresh token.
-- `POST /auth/refresh` : vérifie que `sha256(incoming_token) == players.refresh_token` avant rotation. Token volé révoqué dès la prochaine rotation légitime.
+- `POST /auth/refresh` : rate limit 30/min par IP ; vérifie que `sha256(incoming_token) == players.refresh_token` avant rotation. Token volé révoqué dès la prochaine rotation légitime.
+
+Les trois endpoints utilisent `db: DbDep` (injection FastAPI) — pas d'`AsyncSessionLocal` direct. Commit/rollback délégués à `get_db_dep`.
 
 `security.py` expose `hash_refresh_token(token: str) -> str` (SHA-256 hex).
 
@@ -283,7 +286,7 @@ Tous montés avec préfixe `/api/v1`. Détails complets de chaque endpoint (vali
 
 - `POST /forge` (délègue à service) — **rate limit 5/min** par player_id
 - `GET /forge/history` (50 dernières, ordre `started_at DESC`) — **AVANT** `/forge/{id}`
-- `GET /forge/{id}` (Redis fallback BDD)
+- `GET /forge/{id}` : cache Redis avec **vérification ownership** (`cached["player_id"] == str(player.id)`) — si absent du cache (entrées anciennes) → fallback BDD ; si player_id présent et différent → 404.
 
 ### `planets.py` (487 lignes)
 
@@ -533,7 +536,7 @@ Couvre : RNG rarity (300 tirages valid, distribution COMMON 0.45-0.65), generate
 | Tests d'intégration combat (fleet→combat→XP→cicatrice) | Haute | `tests/routers/` |
 | Tests d'intégration alliances | Haute | `tests/routers/` |
 | Tests d'intégration WebSocket | Haute | `tests/` |
-| Index JSONB pour `combat_logs.attacker_ships_snapshot` participation | Moyenne | `combat.py` ligne 107 |
+| ~~Index JSONB pour `combat_logs.attacker_ships_snapshot` participation~~ | ~~Moyenne~~ | ✅ FAIT — migration 0007, GIN jsonb_path_ops sur attacker et defender snapshot |
 | Charger `alliance_tag` dans ranking | Basse | `ranking.py` ligne 53 |
 | Implémenter pool `EXPEDITION_SCAR_TAGS` (au lieu de `tag_id=1`) | Basse | `expedition_service.py` |
 | Implémenter `module_drop` persistance (table inventory) | Haute | `expedition_service.py` |

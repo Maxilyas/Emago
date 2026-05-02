@@ -105,10 +105,13 @@ interface AuthState {
   setPlayerId(id, username?): void;
   logout(): void;
   isAuthenticated(): boolean;
+  initialize(): Promise<void>;      // auto-refresh au démarrage
 }
 ```
 
 `persist` avec name `'emago-auth'`, `partialize` ne stocke que `refreshToken/playerId/username` (l'access token reste volatil).
+
+`initialize()` est appelé une seule fois dans `App.tsx` via `useEffect([], [])`. Elle POST `/api/v1/auth/refresh` avec le refresh token persisté pour réhydrater l'access token après un rechargement de page. Si le refresh échoue (token expiré ou révoqué) → `logout()` automatique.
 
 ### `gameStore.ts` (v1.1)
 
