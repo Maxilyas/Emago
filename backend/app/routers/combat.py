@@ -21,7 +21,7 @@ from sqlalchemy import or_, select
 
 from app.core.deps import CurrentPlayer, DbDep
 from app.core.redis_client import get_redis
-from app.models.models import CombatLog
+from app.models.models import CombatLog  # noqa: E402
 
 router = APIRouter(prefix="/combat", tags=["combat"])
 
@@ -92,20 +92,20 @@ async def get_combat_history(
     attacker_ships_snapshot et defender_ships_snapshot (JSONB).
     Utilise un filtre PostgreSQL JSONB pour efficacité.
     """
-    # Requête : tous les combats où player_id apparaît dans l'un des snapshots
-    # Syntaxe JSONB PostgreSQL : @> cherche dans le tableau
-    player_id_str = str(player.id)
-
+    # Filtre PostgreSQL JSONB @> : cherche {"owner_id": "..."} dans les snapshots.
+    # Évite le chargement de tous les combats en mémoire + filtrage Python.
     result = await db.execute(
         select(CombatLog)
+        .where(
+            or_(
+                CombatLog.attacker_ships_snapshot.contains([{"owner_id": str(player.id)}]),
+                CombatLog.defender_ships_snapshot.contains([{"owner_id": str(player.id)}]),
+            )
+        )
         .order_by(CombatLog.fought_at.desc())
         .limit(min(limit, 100))
     )
-    logs = result.scalars().all()
-
-    # Filtre Python (fallback simple — suffisant pour un petit projet)
-    # En phase 2 : utiliser un index JSONB PostgreSQL pour performance
-    participant_logs = [log for log in logs if _is_participant(log, player.id)]
+    participant_logs = result.scalars().all()
 
     return [
         CombatSummary(

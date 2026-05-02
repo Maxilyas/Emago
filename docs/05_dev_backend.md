@@ -75,16 +75,20 @@ app = FastAPI(
 )
 
 app.add_middleware(CORSMiddleware,
-    allow_origins=["http://localhost:5173"] if settings.DEBUG else [],
+    allow_origins=["http://localhost:5173"] if settings.DEBUG else settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"])
 ```
 
 14 routers inclus avec préfixe `/api/v1`. Endpoint `/health` retourne 200/503 selon état DB+Redis (pour Uptime Kuma).
 
+**Variable d'env CORS_ORIGINS** (production) : liste JSON ou séparée par virgules des origines autorisées. Ex : `CORS_ORIGINS=["https://emago.example.com"]`.
+
 ---
 
 ## 3. Services métier (résumé)
+
+> **Note** : `ship_build_service_patch.py` a été supprimé — les champs `trait`, `name`, `is_drift` sont intégrés dans `ship_build_service.py` et le modèle SQLAlchemy.
 
 ### `ship_build_service.py` (447 lignes)
 
@@ -250,9 +254,7 @@ Fonctions :
 
 Détails des 8 familles dans la doc Game Designer.
 
-### `ship_build_service_patch.py`
-
-**Rôle** : fichier de documentation/instructions (NON exécuté en prod). Décrit l'application du patch RPG (champs trait, name, is_drift) sur `ship_build_service.py`.
+~~`ship_build_service_patch.py`~~ — **Supprimé**. Était un fichier d'instructions temporaire. Le patch (champs `trait`, `name`, `is_drift`) est appliqué dans `ship_build_service.py` et la migration 0006.
 
 ---
 
@@ -260,21 +262,26 @@ Détails des 8 familles dans la doc Game Designer.
 
 Tous montés avec préfixe `/api/v1`. Détails complets de chaque endpoint (validation, codes HTTP, transactions, cache) dans la doc Architecte. Voici les particularités :
 
-### `auth.py` (97 lignes)
+### `auth.py`
 
-3 endpoints : `/auth/register` (409 si username/email dup), `/auth/login` (401 anti-énumération), `/auth/refresh` (rotation tokens, 401 si kind ≠ refresh).
+3 endpoints :
+- `POST /auth/register` : rate limit 5/min par IP, stocke `hash_refresh_token()` en `players.refresh_token`.
+- `POST /auth/login` : rate limit 10/min par IP, 401 anti-énumération, met à jour le hash du refresh token.
+- `POST /auth/refresh` : vérifie que `sha256(incoming_token) == players.refresh_token` avant rotation. Token volé révoqué dès la prochaine rotation légitime.
 
-### `ships.py` + `modules.py` (159 + 164 lignes)
+`security.py` expose `hash_refresh_token(token: str) -> str` (SHA-256 hex).
+
+### `ships.py` + `modules.py`
 
 - `GET /ships` (liste hangar)
 - `GET /ships/{id}` (détail + current_stats via service)
-- `POST /ships/build` (délègue à service)
+- `POST /ships/build` — **rate limit 10/min** par player_id via `check_rate_limit`
 - `DELETE /ships/{id}` (404 owner masqué, 409 si pas DOCKED, FOR UPDATE)
-- `GET/PUT/DELETE /ships/{id}/modules/{slot}` (404, 409 si IN_FORGE, 422 validation slot)
+- `GET/PUT/DELETE /ships/{id}/modules/{slot}` (404, 409 si IN_FORGE, 422 validation slot) — `PUT` **rate limit 30/min**
 
 ### `forge.py` (105 lignes)
 
-- `POST /forge` (délègue à service)
+- `POST /forge` (délègue à service) — **rate limit 5/min** par player_id
 - `GET /forge/history` (50 dernières, ordre `started_at DESC`) — **AVANT** `/forge/{id}`
 - `GET /forge/{id}` (Redis fallback BDD)
 
@@ -289,13 +296,13 @@ Le plus gros router. Contient :
 ### `fleets.py` (382 lignes)
 
 - `GET /fleets` (actives non rappelées) + `GET /fleets/incoming` (ennemis en approche) — **AVANT** `/{id}`
-- `POST /fleets` (FOR UPDATE ships, validation cargo, `text("INSERT INTO fleet_ships ...")` car SQLAlchemy async ne fait pas executemany)
+- `POST /fleets` — **rate limit 20/min** par player_id, FOR UPDATE ships, validation cargo, `text("INSERT INTO fleet_ships ...")`
 - `DELETE /fleets/{id}` (rappel, ships → DOCKED, WS `fleet.recalled`)
 - Helpers : `_compute_distance` (UA — galaxy diff ×20000, system diff ×5+1000, position diff ×5+100), `_fleet_speed` (min speeds × `FLEET_SPEED_BASE`).
 
 ### `combat.py` (189 lignes)
 
-- `GET /combat/history` (filtre Python sur snapshots JSONB — TODO ligne 107 : index JSONB Phase 2)
+- `GET /combat/history` : filtre PostgreSQL JSONB `@>` sur `attacker_ships_snapshot` et `defender_ships_snapshot` — requête DB uniquement, plus de chargement Python.
 - `GET /combat/{id}` : Redis cache `combat:{id}:result` TTL 600 s. Vérifie participation via helper `_is_participant`. 403 si pas participant, 404 si introuvable.
 
 ### `ranking.py` (74 lignes)
@@ -354,13 +361,14 @@ Le plus gros router. Contient :
 
 ## 6. WebSocket (3 fichiers)
 
-### `connection_manager.py` (60 lignes)
+### `connection_manager.py`
 
 ```python
 class ConnectionManager:
     _connections: dict[UUID, list[WebSocket]] = defaultdict(list)
     
-    async connect(ws, player_id) → ws.accept() + append
+    async connect(ws, player_id)  → ws.accept() + register (usage interne uniquement)
+    def   register(ws, player_id) → append sans accept (utilisé par handler.py)
     disconnect(ws, player_id)
     async send_to_player(player_id, message)  # nettoyage zombies
     async broadcast(message)
@@ -368,16 +376,22 @@ class ConnectionManager:
 
 Singleton `manager`. Pour scale horizontal : à remplacer par broadcaster Redis pub/sub strict (déjà préparé via subscriber).
 
-### `handler.py` (122 lignes)
+### `handler.py`
+
+Flux de connexion sécurisé (token en premier message, pas dans l'URL) :
 
 ```python
 @router.websocket("/ws")
-async def websocket_endpoint(websocket, token: Query):
-    payload = decode_token(token, expected_kind="access")  # close 4001 si invalide
-    player = SELECT Player WHERE id = uuid(payload.sub)    # close 4004 si absent
-    await manager.connect(ws, player_id)
+async def websocket_endpoint(websocket):
+    await websocket.accept()
+    # Attendre {"type": "auth", "token": "..."} dans les 10s (4001 si timeout)
+    msg = await asyncio.wait_for(ws.receive_text(), timeout=10)
+    if msg["type"] != "auth" → close 4001
+    decode_token(msg["token"])  # close 4001 si invalide
+    player = SELECT Player      # close 4004 si absent
+    manager.register(ws, player_id)  # register sans double accept
     sub_task = asyncio.create_task(subscribe_player_events(player_id))
-    await ws.send_json({"type": "connected", "data": {"player_id": ...}})
+    await ws.send_json({"type": "connected", ...})
     
     try:
         while True:
@@ -387,6 +401,8 @@ async def websocket_endpoint(websocket, token: Query):
         sub_task.cancel()
         manager.disconnect(ws, player_id)
 ```
+
+**Sécurité** : le token n'est jamais dans l'URL `/ws` — il n'apparaît pas dans les logs nginx ni l'historique navigateur. Le frontend envoie `{"type": "auth", "token": "<jwt>"}` dans `onopen`.
 
 Messages client supportés : `ping` → `pong`, `forge.poll` → `forge.status` (fallback si WS coupé pendant forge active).
 

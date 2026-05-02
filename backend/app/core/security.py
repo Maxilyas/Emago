@@ -4,6 +4,7 @@ Hachage de mot de passe + génération/validation JWT.
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -20,6 +21,11 @@ TokenKind = Literal["access", "refresh"]
 
 def hash_password(plain: str) -> str:
     return _pwd_context.hash(plain)
+
+
+def hash_refresh_token(token: str) -> str:
+    """SHA-256 du refresh token pour stockage sécurisé en base (révocation)."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def verify_password(plain: str, hashed: str) -> bool:

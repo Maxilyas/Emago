@@ -22,6 +22,7 @@ from fastapi import Response
 from app.core.config import get_settings
 from app.core.deps import CurrentPlayer, DbDep
 from app.core.redis_client import publish_event
+from app.middleware.rate_limit import check_rate_limit
 from app.models.models import Fleet, FleetMission, Planet, Ship, ShipStatus
 
 router = APIRouter(prefix="/fleets", tags=["fleets"])
@@ -206,6 +207,7 @@ async def send_fleet(
 
     L'heure d'arrivée est calculée côté serveur.
     """
+    await check_rate_limit(str(player.id), "fleets:send")
     # Validation mission
     try:
         mission_enum = FleetMission(body.mission.upper())

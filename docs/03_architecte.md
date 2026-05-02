@@ -10,7 +10,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  Client React (Vite + TS + Zustand + TanStack Query)        │
 │  ├── REST  (axios via lib/api.ts → /api/v1/*)               │
-│  └── WS    (useGameSocket.ts → /ws?token=<jwt>)             │
+│  └── WS    (useGameSocket.ts → /ws, token en premier msg)   │
 └──────────────────────────┬──────────────────────────────────┘
                            │
                   Internet (HTTPS 443)
@@ -27,7 +27,7 @@
                   │  FastAPI (Uvicorn 4 workers)             │
                   │                                          │
                   │  Routers (14)         WebSocket          │
-                  │  ├── auth             /ws?token          │
+                  │  ├── auth             /ws (auth msg)     │
                   │  ├── ships            ConnectionManager  │
                   │  ├── modules          (singleton mémoire)│
                   │  ├── forge            Subscriber Redis   │
@@ -247,21 +247,24 @@ Préfixe global : `/api/v1`. Auth : `Authorization: Bearer <jwt access>`. Les d�
 
 ## 5. Événements WebSocket
 
-Endpoint : `ws://host/ws?token=<jwt access>`
+Endpoint : `ws://host/ws` (token **jamais dans l'URL** — protège contre les logs nginx et l'historique navigateur)
 
 ### Connexion
 
 ```
-Client → ws.connect(token)
-Serveur → decode_token(token, expected="access")
-       → SELECT Player (4004 si absent)
-       → manager.connect(ws, player_id)
+Client → ws.connect()            ← pas de ?token= dans l'URL
+Serveur → accept()
+       → wait_for(receive_text(), timeout=10s)   ← 4001 si timeout
+Client → send {"type": "auth", "token": "<jwt access>"}
+Serveur → decode_token(token, expected="access") ← 4001 si invalide
+       → SELECT Player                           ← 4004 si absent
+       → manager.register(ws, player_id)         ← sans double accept
        → asyncio.create_task(subscribe_player_events(player_id))
        → send {"type": "connected", "data": {"player_id": "..."}}
        → loop: receive_text → _handle_client_message
 ```
 
-Codes de fermeture : `4001` token invalide, `4004` joueur introuvable.
+Codes de fermeture : `4001` token invalide ou timeout, `4004` joueur introuvable.
 
 ### Messages Client → Serveur
 

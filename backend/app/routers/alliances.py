@@ -23,7 +23,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload  # noqa: F401 — conservé pour usage futur
 
 from app.core.deps import CurrentPlayer, DbDep
 from app.models.models import Alliance, Planet, Player
@@ -114,33 +114,36 @@ async def _require_role(player_id: uuid.UUID, alliance_id: uuid.UUID, db,
 
 @router.get("", response_model=list[AllianceSummary])
 async def list_alliances(db: DbDep) -> list[AllianceSummary]:
-    """Top 50 alliances par score. Public — pas d'auth requise."""
-    result = await db.execute(
-        select(Alliance).order_by(Alliance.score.desc()).limit(50)
+    """
+    Top 50 alliances par score. Public — pas d'auth requise.
+    1 requête avec sous-requête pour les comptes membres (pas de N+1).
+    """
+    # Sous-requête : nombre de membres par alliance
+    member_counts_sq = (
+        select(AllianceMember.alliance_id, func.count(AllianceMember.id).label("cnt"))
+        .group_by(AllianceMember.alliance_id)
+        .subquery("member_counts")
     )
-    alliances = result.scalars().all()
 
-    out = []
-    for a in alliances:
-        # Compte des membres
-        cnt = await db.execute(
-            select(func.count(AllianceMember.id)).where(AllianceMember.alliance_id == a.id)
-        )
-        member_count = cnt.scalar() or 0
+    result = await db.execute(
+        select(Alliance, Player.username, member_counts_sq.c.cnt)
+        .join(Player, Player.id == Alliance.leader_id)
+        .outerjoin(member_counts_sq, member_counts_sq.c.alliance_id == Alliance.id)
+        .order_by(Alliance.score.desc())
+        .limit(50)
+    )
 
-        # Nom du leader
-        leader = await db.execute(select(Player).where(Player.id == a.leader_id))
-        leader_player = leader.scalar_one_or_none()
-
-        out.append(AllianceSummary(
+    return [
+        AllianceSummary(
             id=str(a.id),
             name=a.name,
             tag=a.tag,
             score=a.score,
-            member_count=member_count,
-            leader_username=leader_player.username if leader_player else "?",
-        ))
-    return out
+            member_count=cnt or 0,
+            leader_username=leader_username or "?",
+        )
+        for a, leader_username, cnt in result.all()
+    ]
 
 
 @router.get("/{alliance_id}", response_model=AllianceDetail)
@@ -151,25 +154,31 @@ async def get_alliance(alliance_id: uuid.UUID, db: DbDep) -> AllianceDetail:
     if not alliance:
         raise HTTPException(status_code=404, detail="Alliance introuvable.")
 
-    # Membres
+    # Membres — chargement en batch (2 requêtes au lieu de N+1)
     mems_result = await db.execute(
         select(AllianceMember).where(AllianceMember.alliance_id == alliance_id)
     )
     members_rows = mems_result.scalars().all()
-    members_out = []
-    for m in members_rows:
-        p = await db.execute(select(Player).where(Player.id == m.player_id))
-        player = p.scalar_one_or_none()
-        if player:
-            members_out.append(MemberOut(
-                player_id=str(m.player_id),
-                username=player.username,
-                role=m.role,
-                score=player.score,
-                joined_at=m.joined_at,
-            ))
+    player_ids = [m.player_id for m in members_rows]
+    if player_ids:
+        players_q = await db.execute(select(Player).where(Player.id.in_(player_ids)))
+        players_map: dict[uuid.UUID, Player] = {p.id: p for p in players_q.scalars().all()}
+    else:
+        players_map = {}
 
-    # Guerres actives
+    members_out = [
+        MemberOut(
+            player_id=str(m.player_id),
+            username=players_map[m.player_id].username,
+            role=m.role,
+            score=players_map[m.player_id].score,
+            joined_at=m.joined_at,
+        )
+        for m in members_rows
+        if m.player_id in players_map
+    ]
+
+    # Guerres actives — chargement en batch (2 requêtes au lieu de N+1)
     wars_result = await db.execute(
         select(AllianceWar).where(
             (AllianceWar.attacker_id == alliance_id) | (AllianceWar.defender_id == alliance_id),
@@ -177,21 +186,29 @@ async def get_alliance(alliance_id: uuid.UUID, db: DbDep) -> AllianceDetail:
         )
     )
     wars_rows = wars_result.scalars().all()
-    wars_out = []
-    for w in wars_rows:
-        is_attacker = w.attacker_id == alliance_id
-        opponent_id = w.defender_id if is_attacker else w.attacker_id
-        opp = await db.execute(select(Alliance).where(Alliance.id == opponent_id))
-        opp_alliance = opp.scalar_one_or_none()
-        if opp_alliance:
-            wars_out.append(WarOut(
-                war_id=str(w.id),
-                opponent_name=opp_alliance.name,
-                opponent_tag=opp_alliance.tag,
-                side="attacker" if is_attacker else "defender",
-                declared_at=w.declared_at,
-                status=w.status,
-            ))
+    opponent_ids = [
+        w.defender_id if w.attacker_id == alliance_id else w.attacker_id
+        for w in wars_rows
+    ]
+    if opponent_ids:
+        opps_q = await db.execute(select(Alliance).where(Alliance.id.in_(opponent_ids)))
+        opps_map: dict[uuid.UUID, Alliance] = {a.id: a for a in opps_q.scalars().all()}
+    else:
+        opps_map = {}
+
+    wars_out = [
+        WarOut(
+            war_id=str(w.id),
+            opponent_name=opps_map[opp_id].name,
+            opponent_tag=opps_map[opp_id].tag,
+            side="attacker" if w.attacker_id == alliance_id else "defender",
+            declared_at=w.declared_at,
+            status=w.status,
+        )
+        for w in wars_rows
+        for opp_id in [(w.defender_id if w.attacker_id == alliance_id else w.attacker_id)]
+        if opp_id in opps_map
+    ]
 
     return AllianceDetail(
         id=str(alliance.id),
@@ -454,9 +471,9 @@ async def declare_peace(
     if not war:
         raise HTTPException(status_code=404, detail="Guerre introuvable.")
 
-    # Vérifier durée minimum
+    # Vérifier durée minimum — war.declared_at est déjà tz-aware (TIMESTAMP WITH TIME ZONE)
     min_peace = war.declared_at + timedelta(hours=_WAR_MIN_DURATION_HOURS)
-    if datetime.now(UTC) < min_peace.replace(tzinfo=UTC):
+    if datetime.now(UTC) < min_peace:
         raise HTTPException(
             status_code=409,
             detail=f"La paix ne peut être déclarée avant {min_peace.isoformat()} (48h minimum)."

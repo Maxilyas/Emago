@@ -42,6 +42,7 @@
 | 5 | Re-roll de stats RNG via UPDATE | CRITIQUE | ✅ FAIT | Trigger PG `prevent_base_stats_update` |
 | 6 | Token JWT expiré accepté | CRITIQUE | ✅ FAIT | `python-jose` vérifie expiration + kind |
 | 7 | Manipulation XP en input | CRITIQUE | ✅ FAIT | Aucun endpoint n'accepte XP en body |
+| 26 | Refresh token non révoqué (token volé utilisable 30j) | CRITIQUE | ✅ FAIT | Hash SHA-256 stocké en `players.refresh_token` ; chaque rotation invalide l'ancien. Voir `auth.py` |
 
 ### Élevés
 
@@ -53,7 +54,8 @@
 | 11 | Injection SQL via JSONB | ÉLEVÉ | ✅ FAIT (SQLAlchemy paramétrisé partout) |
 | 12 | Vérification participation /combat/{id} | ÉLEVÉ | ✅ FAIT (helper `_is_participant` → 403 si non participant, 404 si introuvable) |
 | 13 | Pedigree avec parent d'autrui | ÉLEVÉ | ✅ FAIT (`_validate_pedigree_parent` 403 si owner ≠) |
-| 14 | Rate limiting | ÉLEVÉ | ✅ FAIT (slowapi sliding window Redis) |
+| 14 | Rate limiting | ÉLEVÉ | ✅ FAIT | Custom Redis sliding window (`middleware/rate_limit.py`) branché sur : `POST /auth/register` (5/min par IP), `POST /auth/login` (10/min par IP), `POST /ships/build` (10/min), `POST /forge` (5/min), `POST /fleets` (20/min), `PUT /ships/{id}/modules/{slot}` (30/min) |
+| 27 | JWT dans l'URL WebSocket (logs nginx) | MOYEN | ✅ FAIT | Token envoyé en premier message JSON après connexion (plus dans `?token=`). Voir `websocket/handler.py` et `useGameSocket.ts` |
 
 ### Moyens
 
@@ -64,7 +66,7 @@
 | 17 | Race condition tech/research (pas de FOR UPDATE) | MOYEN | ⚠️ EN COURS |
 | 18 | Race condition alliances/create (pas de FOR UPDATE) | MOYEN | ⚠️ EN COURS |
 | 19 | Race condition daily/login (pas de FOR UPDATE) | MOYEN | ⚠️ EN COURS |
-| 20 | Headers HTTP en production (CORS, CSP, HSTS) | MOYEN | ✅ FAIT (Nginx conf.d/emago.conf : HSTS, CSP, X-Frame, X-Content) |
+| 20 | Headers HTTP en production (CORS, CSP, HSTS) | MOYEN | ✅ FAIT | Nginx conf.d/emago.conf : HSTS, CSP, X-Frame, X-Content. CORS prod configuré via `CORS_ORIGINS` (Settings) — plus de `allow_origins=[]` en prod |
 | 21 | _active_research mémoire perdue redémarrage | MOYEN | ⚠️ TODO migrer en BDD (`tech.py:212`) |
 | 22 | Ranking N+1 queries | MOYEN | ⚠️ TODO optim |
 
@@ -73,7 +75,7 @@
 | # | Vecteur | Risque | Statut |
 |---:|---|---|---|
 | 23 | Scaling WebSocket horizontal (sticky) | FAIBLE | ⚠️ Préparé (Redis pub/sub) — pas encore activé |
-| 24 | Index JSONB combat_logs participation | FAIBLE | ⚠️ TODO Phase 2 (`combat.py:107`) |
+| 24 | Filtrage JSONB combat_logs en mémoire (Python) | FAIBLE | ✅ FAIT | Remplacé par filtre PostgreSQL `@>` côté BDD (`CombatLog.attacker_ships_snapshot.contains(...)`) — plus de chargement de 100 lignes + tri Python |
 | 25 | Heartbeat WS server-side (timeout) | FAIBLE | ⚠️ TODO |
 
 ---
@@ -193,7 +195,7 @@ Dans `ship_stats_service._compute_current_stats` : si `target > base × 2.5`, fo
 | A04 | Insecure Design | ✅ RNG côté serveur, calculs de jeu serveur, immuabilité base_stats |
 | A05 | Security Misconfiguration | ⚠️ EN COURS (CSP en place dans Nginx, à valider) |
 | A06 | Vulnerable Components | ⚠️ EN COURS (audit `pip audit` + `npm audit` à automatiser dans CI) |
-| A07 | Identification & Authentication Failures | ✅ JWT rotation refresh, anti-énumération, rate limit auth |
+| A07 | Identification & Authentication Failures | ✅ JWT rotation refresh + révocation par hash SHA-256 en base, anti-énumération login, rate limit auth par IP |
 | A08 | Software & Data Integrity Failures | ✅ Trigger PG immuabilité, déterminisme combat |
 | A09 | Security Logging & Monitoring | ⚠️ EN COURS (logs JSON structurés à valider, alertes via Uptime Kuma) |
 | A10 | Server-Side Request Forgery (SSRF) | N/A (pas de fetch externe) |

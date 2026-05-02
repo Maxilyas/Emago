@@ -29,6 +29,11 @@ class ConnectionManager:
         self._connections[player_id].append(websocket)
         logger.info("WS connecté : player=%s (total=%d)", player_id, len(self._connections[player_id]))
 
+    def register(self, websocket: WebSocket, player_id: UUID) -> None:
+        """Enregistre un WebSocket déjà accepté (pas de double accept)."""
+        self._connections[player_id].append(websocket)
+        logger.info("WS enregistré : player=%s (total=%d)", player_id, len(self._connections[player_id]))
+
     def disconnect(self, websocket: WebSocket, player_id: UUID) -> None:
         conns = self._connections.get(player_id, [])
         if websocket in conns:

@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # URLs autorisées en production (ex: "https://emago.example.com")
+    # Séparées par des virgules dans la variable d'environnement CORS_ORIGINS
+    CORS_ORIGINS: list[str] = []
+
     RESOURCE_TICK_SECONDS: int = 60
     BUILD_QUEUE_MAX: int = 5
     FLEET_SPEED_BASE: float = 1.0

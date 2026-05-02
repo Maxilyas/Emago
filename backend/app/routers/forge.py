@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.core.deps import CurrentPlayer, DbDep
+from app.middleware.rate_limit import check_rate_limit
 from app.models.models import ForgeQueue
 from app.schemas.forge import (
     ForgeHistoryItem,
@@ -36,6 +37,7 @@ async def start_forge_endpoint(
     Lance une opération de Forge entre deux vaisseaux.
     Toutes les validations sont dans forge_service.start_forge().
     """
+    await check_rate_limit(str(player.id), "forge:start")
     result = await start_forge(
         db=db,
         player_id=player.id,

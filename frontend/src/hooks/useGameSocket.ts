@@ -1,14 +1,11 @@
 /**
- * hooks/useGameSocket.ts — v2.1
+ * hooks/useGameSocket.ts — v2.2
  * Agent 6 — Développeur Frontend | Sprint RPG
  *
- * Fix v2.1 :
- *   - Supprimé import.meta.env.VITE_WS_URL : Vite proxifie déjà /ws → ws://localhost:8000
- *     (voir vite.config.ts : proxy['/ws']). Utiliser une URL absolue cassait le proxy
- *     en dev et nécessitait une variable d'env qui n'existe pas dans le projet.
- *     En prod, Nginx gère le proxy WS sur /ws — même chemin relatif.
- *   - L'URL WS est maintenant construite depuis window.location (protocole ws/wss
- *     automatique selon http/https) pour fonctionner en dev ET en prod sans config.
+ * v2.1 : URL construite depuis window.location (ws/wss automatique).
+ * v2.2 : Token envoyé en premier message JSON après connexion (plus dans l'URL).
+ *        Évite l'exposition du JWT dans les logs nginx et l'historique navigateur.
+ *        Protocole côté serveur : premier message {"type":"auth","token":"..."}.
  */
 import { useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/stores/authStore'
@@ -17,10 +14,10 @@ import { useWsEventHandlers } from '@/components/layout/NotificationPanel'
 const MAX_RECONNECT_DELAY = 30_000
 
 /** Construit l'URL WebSocket depuis l'origine courante — fonctionne en dev et prod. */
-function getWsUrl(token: string): string {
+function getWsUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host     = window.location.host   // ex: "localhost:5173" ou "emago.example.com"
-  return `${protocol}//${host}/ws?token=${token}`
+  return `${protocol}//${host}/ws`
 }
 
 export function useGameSocket() {
@@ -34,10 +31,12 @@ export function useGameSocket() {
     if (!accessToken) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const ws      = new WebSocket(getWsUrl(accessToken))
+    const ws      = new WebSocket(getWsUrl())
     wsRef.current = ws
 
     ws.onopen = () => {
+      // Envoyer le token en premier message — jamais dans l'URL (logs serveur)
+      ws.send(JSON.stringify({ type: 'auth', token: accessToken }))
       delayRef.current = 1_000  // reset backoff sur connexion réussie
     }
 

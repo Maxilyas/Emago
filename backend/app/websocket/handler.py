@@ -1,15 +1,17 @@
 """
 app/websocket/handler.py
-Endpoint WebSocket principal : ws://.../ws?token=<JWT>
+Endpoint WebSocket principal : ws://.../ws
 
-Flux de connexion :
-  1. Client envoie ?token=<access_token> dans la query string
-  2. Serveur valide le JWT et charge le joueur
-  3. Souscription Redis pub/sub sur emago:events:player:{id}
-  4. La coroutine tourne jusqu'à déconnexion
+Flux de connexion sécurisé (token en premier message, pas dans l'URL) :
+  1. Client se connecte à /ws (sans token dans l'URL — évite les logs nginx)
+  2. Serveur accepte et attend un message {"type": "auth", "token": "<access_jwt>"}
+     dans les 10 secondes
+  3. Serveur valide le JWT et charge le joueur
+  4. Souscription Redis pub/sub sur emago:events:player:{id}
+  5. La coroutine tourne jusqu'à déconnexion
 
 Events client → serveur supportés :
-  { "type": "ping" }           → { "type": "pong" }
+  { "type": "ping" }            → { "type": "pong" }
   { "type": "forge.poll", ... } → statut de forge retourné
 """
 from __future__ import annotations
@@ -19,7 +21,7 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
@@ -32,17 +34,40 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
+_AUTH_TIMEOUT_SECONDS = 10
+
 
 @router.websocket("/ws")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    token: str = Query(..., description="JWT access token"),
-) -> None:
+async def websocket_endpoint(websocket: WebSocket) -> None:
     """
     Connexion WebSocket authentifiée.
-    Le token est passé en query param (header Authorization non disponible en WS).
+    Le token est transmis en premier message JSON après la connexion,
+    jamais dans l'URL (protège contre les logs serveur et l'historique navigateur).
     """
-    # --- Auth ---
+    await websocket.accept()
+
+    # --- Attente du message d'authentification ---
+    try:
+        raw = await asyncio.wait_for(
+            websocket.receive_text(), timeout=_AUTH_TIMEOUT_SECONDS
+        )
+        msg = json.loads(raw)
+    except asyncio.TimeoutError:
+        await websocket.close(code=4001, reason="Auth timeout.")
+        logger.warning("WS rejeté : timeout d'authentification.")
+        return
+    except json.JSONDecodeError:
+        await websocket.close(code=4001, reason="JSON invalide.")
+        return
+
+    if msg.get("type") != "auth":
+        await websocket.close(
+            code=4001,
+            reason='Premier message attendu : {"type": "auth", "token": "..."}.',
+        )
+        return
+
+    token = msg.get("token", "")
     try:
         player_id_str = decode_token(token, expected_kind="access")
         player_id = uuid.UUID(player_id_str)
@@ -60,20 +85,18 @@ async def websocket_endpoint(
         await websocket.close(code=4004, reason="Joueur introuvable.")
         return
 
-    # --- Connexion ---
-    await manager.connect(websocket, player_id)
+    # --- Connexion établie ---
+    manager.register(websocket, player_id)
 
     # Lance la souscription Redis en background
     subscriber_task = asyncio.create_task(subscribe_player_events(player_id))
 
     try:
-        # Message de bienvenue
         await websocket.send_json({
             "type": "connected",
             "data": {"player_id": str(player_id)},
         })
 
-        # Boucle de lecture des messages client
         while True:
             raw = await websocket.receive_text()
             try:
@@ -105,7 +128,6 @@ async def _handle_client_message(
         await websocket.send_json({"type": "pong"})
 
     elif msg_type == "forge.poll":
-        # Fallback polling : le client demande le statut d'une forge
         forge_id_raw = msg.get("data", {}).get("forge_id")
         if forge_id_raw:
             from app.services.forge_service import get_forge_status

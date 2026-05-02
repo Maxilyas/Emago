@@ -20,6 +20,7 @@ from fastapi import Response
 
 
 from app.core.deps import CurrentPlayer, DbDep
+from app.middleware.rate_limit import check_rate_limit
 from app.models.models import Ship, ShipModule, ShipStatus
 from app.schemas.ship import InstallModuleRequest, ModuleInstallResponse
 from app.services.ship_stats_service import (
@@ -65,6 +66,7 @@ async def install_module(
     Installe ou remplace un module dans un slot.
     Invalide le cache Redis et retourne les current_stats mises à jour.
     """
+    await check_rate_limit(str(player.id), "modules:install")
     ship = await _get_owned_ship(ship_id, player.id, db)
 
     if ship.status == ShipStatus.IN_FORGE:

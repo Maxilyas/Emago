@@ -29,6 +29,7 @@ from app.services.ship_build_service import (
     build_ship,
     find_best_stat,
 )
+from app.middleware.rate_limit import check_rate_limit
 from app.services.ship_stats_service import (
     get_current_stats,
     invalidate_hangar_cache,
@@ -102,6 +103,7 @@ async def build_ship_endpoint(
     Lance la fabrication d'un vaisseau.
     Déduit les ressources, tire RNG, applique Pedigree optionnel.
     """
+    await check_rate_limit(str(player.id), "ships:build")
     ship = await build_ship(
         db=db,
         player_id=player.id,
