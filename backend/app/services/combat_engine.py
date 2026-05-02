@@ -34,7 +34,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import CombatLog, Ship, ShipScar, ShipStatus
+from app.models.models import CombatLog, ScarTag, Ship, ShipScar, ShipStatus
 from app.services.ship_stats_service import (
     GRADE_SHIELD_REGEN,
     get_current_stats,
@@ -70,32 +70,11 @@ _GRADE_THRESHOLDS: list[tuple[int, int]] = [
 # Le vaisseau survit à 1 HP si c'est sa première mort dans ce combat.
 GRADE_4_IMMUNITY_HP = 1
 
-# Synergies (GDD §1) — appliquées par le moteur, jamais stockées
-_SYNERGIES = {
-    # (attacker_class, defender_class) → bonus appliqué à l'attaquant
-    # Ces bonus sont logués dans le rapport mais pas calculables par le client
-}
-
 # Seuil de cicatrice : perte de 75 %+ de la coque (GDD §5d)
 SCAR_HULL_LOSS_THRESHOLD = 0.75
 
 # Seuil de cicatrice : combat contre une flotte ≥ 2× plus puissante (GDD §5d)
 SCAR_POWER_RATIO_THRESHOLD = 2.0
-
-# Pool de tags narratifs cicatrices — échantillon représentatif
-# En production, ces tags viendraient de la table scar_tags (pool ~500)
-_SCAR_TAGS: list[str] = [
-    "Rescapé de la Nébuleuse Kha",
-    "Survivant du Siège de l'Anneau IV",
-    "Témoin de la Chute d'Eryndor",
-    "Vétéran de la Bataille des Trois Lunes",
-    "Rescapé du Couloir de Fenrath",
-    "Survivant de la Purge de Vael",
-    "Marqué par l'Abysse de Corvus",
-    "Dernier de la Flotte Brisée",
-    "Cicatricé aux Abords d'Obsidia",
-    "Rescapé de la Tempête de Fer",
-]
 
 _srng_combat = random.SystemRandom()   # pour les tirages in-combat non-reproductibles
 
@@ -414,11 +393,6 @@ def _compute_differential_xp(
     return xp_final, audit_params
 
 
-def _get_combat_grade(ship: Ship, xp_result: str) -> int:
-    """Retourne le grade actuel + éventuellement le nouveau grade après gain XP."""
-    return ship.grade   # le grade réel est mis à jour dans resolve_combat
-
-
 # ---------------------------------------------------------------------------
 # Détection et création des cicatrices (GDD §5d)
 # ---------------------------------------------------------------------------
@@ -447,11 +421,6 @@ def _should_earn_scar(
         return True
 
     return False
-
-
-def _pick_scar_tag() -> str:
-    """Tire un tag narratif aléatoire dans le pool."""
-    return _srng_combat.choice(_SCAR_TAGS)
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +554,9 @@ async def resolve_combat(
         cs.xp_earned = xp_final
         def_xp_audit.append({"ship_id": str(cs.ship_id), **audit})
 
+    # --- Préchargement des tags de cicatrices depuis la BDD ---
+    all_scar_tags = (await db.execute(select(ScarTag))).scalars().all()
+
     # --- Persistance des effets sur les Ship DB ---
     all_combatants = att_combatants + def_combatants
     cs_by_id = {cs.ship_id: cs for cs in all_combatants}
@@ -625,20 +597,23 @@ async def resolve_combat(
             db.add(ship_db)
 
         # Cicatrices
-        if _should_earn_scar(cs, def_power if cs.owner_id == att_ships_db[0].owner_id else att_power,
-                              att_power if cs.owner_id == att_ships_db[0].owner_id else def_power):
-            tag = _pick_scar_tag()
+        if all_scar_tags and _should_earn_scar(
+            cs,
+            def_power if cs.owner_id == att_ships_db[0].owner_id else att_power,
+            att_power if cs.owner_id == att_ships_db[0].owner_id else def_power,
+        ):
+            scar_tag = _srng_combat.choice(all_scar_tags)
             scar = ShipScar(
                 id=uuid.uuid4(),
                 ship_id=ship_db.id,
-                tag=tag,
+                tag_id=scar_tag.id,
                 earned_at=datetime.now(UTC),
             )
             db.add(scar)
             scar_events.append({
                 "ship_id":  str(ship_db.id),
                 "owner_id": str(ship_db.owner_id),
-                "tag":      tag,
+                "tag":      scar_tag.narrative,
             })
 
     # --- CombatLog (replay complet) ---

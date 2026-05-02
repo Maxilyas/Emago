@@ -1,7 +1,7 @@
 // ─── App.tsx — Version finale unifiée
 // Combine : routes originales (hangar/:id) + Sprint 3 (combat) + Sprint 4 (alliances)
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore }    from '@/stores/authStore'
 import { AppLayout }       from '@/components/layout/AppLayout'
@@ -34,6 +34,10 @@ function RedirectIfAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    useAuthStore.getState().initialize()
+  }, [])
+
   return (
     <BrowserRouter>
       <Routes>

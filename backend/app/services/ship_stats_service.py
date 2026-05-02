@@ -301,6 +301,16 @@ def _compute_current_stats(
         })
 
     # --- Étape 3 : application des boosts + plafonnement ---
+    # Formule : target = base×(1+grade_mult) + base×boost_ratio
+    #   - grade_mult   : dépend du grade (0→+60 %, cf. GRADE_STAT_MULT)
+    #   - boost_ratio  : somme des boosts de modules actifs, calculé sur base_val
+    #   - cap absolu   : base × 2.5 (= +150 % max, GDD §3)
+    # Exemple hull=100 :
+    #   grade 3 (+30 %) → 130 ; 2 modules CANNON lvl3 (+40 %) → +40 (sur base 100)
+    #   target = 170, cap = 250 → non plafonnée
+    #   grade 5 (+60 %) + 6 modules max (+90 %) → 160 + 90 = 250 = cap exactement
+    # Note : module_add est toujours calculé sur base_val (pas after_grade_val)
+    # pour que le cap reste symétrique quelle que soit la combinaison grade/modules.
     final: dict[str, float] = {}
     cap_reached: list[str] = []
 
@@ -308,9 +318,6 @@ def _compute_current_stats(
         after_grade_val = after_grade[stat]
         boost_ratio = module_boost_ratio.get(stat, 0.0)
 
-        # Valeur cible = après_grade + boost_modules (appliqué sur la base pour cohérence)
-        # Formule : base × grade_mult + base × boost_ratio
-        # → on ajoute les deux contributions au-dessus de base
         module_add = base_val * boost_ratio
         target = after_grade_val + module_add
 

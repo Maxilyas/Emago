@@ -85,7 +85,14 @@ async def get_forge_status_endpoint(
     # 1. Redis (chemin nominal)
     cached = await get_forge_status(forge_id)
     if cached:
-        return ForgeStatusResponse(**cached)
+        cached_owner = cached.get("player_id")
+        if cached_owner is None:
+            # Entrée Redis ancienne (sans player_id) — fallback BDD pour vérifier l'ownership
+            pass
+        elif cached_owner != str(player.id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Forge introuvable.")
+        else:
+            return ForgeStatusResponse(**cached)
 
     # 2. Fallback BDD
     result = await db.execute(

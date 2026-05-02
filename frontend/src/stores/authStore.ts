@@ -10,6 +10,7 @@ interface AuthState {
   setPlayerId: (id: string, username?: string) => void
   logout: () => void
   isAuthenticated: () => boolean
+  initialize: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -30,6 +31,23 @@ export const useAuthStore = create<AuthState>()(
         set({ accessToken: null, refreshToken: null, playerId: null, username: null }),
 
       isAuthenticated: () => !!get().accessToken,
+
+      initialize: async () => {
+        const { refreshToken, setTokens, logout } = get()
+        if (!refreshToken) return
+        try {
+          const res = await fetch('/api/v1/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          })
+          if (!res.ok) { logout(); return }
+          const data = await res.json()
+          setTokens(data.access_token, data.refresh_token)
+        } catch {
+          logout()
+        }
+      },
     }),
     {
       name: 'emago-auth',

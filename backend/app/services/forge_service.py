@@ -255,7 +255,7 @@ async def start_forge(
     )
     db.add(forge_entry)
 
-    await _store_forge_status(forge_entry.id, completed_at, progress_pct=0)
+    await _store_forge_status(forge_entry.id, completed_at, progress_pct=0, player_id=player_id)
     await invalidate_hangar_cache(player_id)
 
     return {
@@ -388,6 +388,7 @@ async def finalize_forge(
         forge_entry.completed_at,
         progress_pct=100,
         result_ship_id=new_ship.id,
+        player_id=forge_entry.player_id,
     )
 
     await invalidate_hangar_cache(forge_entry.player_id)
@@ -519,6 +520,7 @@ async def _store_forge_status(
     forge_id: uuid.UUID,
     completed_at: datetime,
     progress_pct: int,
+    player_id: uuid.UUID | None = None,
     result_ship_id: uuid.UUID | None = None,
 ) -> None:
     """Écrit le statut de forge dans Redis (TTL = durée forge + 10 min)."""
@@ -532,6 +534,8 @@ async def _store_forge_status(
             int((completed_at.replace(tzinfo=UTC) - datetime.now(UTC)).total_seconds()),
         ),
     }
+    if player_id is not None:
+        payload["player_id"] = str(player_id)
     if result_ship_id is not None:
         payload["result_ship_id"] = str(result_ship_id)
 

@@ -34,6 +34,7 @@ _LIMITS: dict[str, int] = {
     "fleets:send":    20,   # POST /fleets
     "auth:register":   5,   # POST /auth/register
     "auth:login":     10,   # POST /auth/login — anti brute-force
+    "auth:refresh":   30,   # POST /auth/refresh — large mais bloque l'abus automatisé
     "modules:install": 30,  # PUT /ships/{id}/modules/{slot}
     "default":       120,   # Tous les autres endpoints authentifiés
 }

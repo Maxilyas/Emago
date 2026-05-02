@@ -14,12 +14,14 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Column,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     SmallInteger,
     String,
+    Table,
     Text,
     UniqueConstraint,
     event,
@@ -572,8 +574,6 @@ class Fleet(Base):
 # TABLE : fleet_ships  (association)
 # ---------------------------------------------------------------------------
 
-from sqlalchemy import Table, Column
-
 fleet_ships = Table(
     "fleet_ships",
     Base.metadata,
@@ -625,4 +625,16 @@ class CombatLog(Base):
             name="ck_combat_outcome",
         ),
         Index("idx_combat_logs_attacker", "fleet_attacker_id", "fought_at"),
+        Index(
+            "idx_combat_logs_attacker_snapshot",
+            "attacker_ships_snapshot",
+            postgresql_using="gin",
+            postgresql_ops={"attacker_ships_snapshot": "jsonb_path_ops"},
+        ),
+        Index(
+            "idx_combat_logs_defender_snapshot",
+            "defender_ships_snapshot",
+            postgresql_using="gin",
+            postgresql_ops={"defender_ships_snapshot": "jsonb_path_ops"},
+        ),
     )
