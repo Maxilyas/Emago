@@ -73,7 +73,7 @@ Utilise le template `references/report_template.md`. Toujours respecter cet ordr
 À la fin du rapport, demande à l'utilisateur :
 > "Veux-tu que je mette à jour `docs/01_chef_de_projet.md` (section 9 Tableau de bord) ou `docs/10_ameliorations.md` selon ce qui a évolué cette semaine ?"
 
-Si oui, utilise `emago-roadmap-update` (autre skill) ou édite directement.
+Si oui, éditer directement `docs/01_chef_de_projet.md` et/ou `docs/10_ameliorations.md`.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: emago-attack-vector-audit
-description: Audite un endpoint Emago (existant ou en cours de design) contre les 25 vecteurs d'attaque connus du projet documentés dans docs/08_qa_securite.md — ownership masqué (404 vs 403), double-soumission Forge, race conditions, manipulation RNG, énumération login, immuabilité base_stats via trigger PG, isolation WebSocket cross-player, math.floor pour ressources, rate-limit sliding-window. Sortie un rapport markdown avec risques par criticité (CRITIQUE / ÉLEVÉ / MOYEN / FAIBLE) et corrections suggérées avec ligne de code. Use when l'utilisateur dit "audit sécurité Emago", "vecteur d'attaque", "review sécurité endpoint", "OWASP Emago", "QA endpoint", "valide la sécurité de", "check sécurité router".
+description: Audite un endpoint Emago (existant ou en cours de design) contre les 28 vecteurs d'attaque connus du projet documentés dans docs/08_qa_securite.md — ownership masqué (404 vs 403), double-soumission Forge, race conditions, manipulation RNG, énumération login, immuabilité base_stats via trigger PG, isolation WebSocket cross-player, math.floor pour ressources, rate-limit sliding-window, ownership forge cache Redis. Sortie un rapport markdown avec risques par criticité (CRITIQUE / ÉLEVÉ / MOYEN / FAIBLE) et corrections suggérées avec ligne de code. Termine toujours par mise à jour docs/08_qa_securite.md si nouveau vecteur ou statut changé. Use when l'utilisateur dit "audit sécurité Emago", "vecteur d'attaque", "review sécurité endpoint", "OWASP Emago", "QA endpoint", "valide la sécurité de", "check sécurité router".
 license: MIT
 metadata:
   author: Antoine
@@ -56,6 +56,7 @@ Bloque les régressions sécurité avant qu'elles arrivent en prod. Encapsule le
 | E6 | Rate-limit absent sur endpoint sensible | Abus, DoS |
 | E7 | Injection SQL via JSONB | Data corruption |
 | E8 | CORS trop permissif en prod (DEBUG=true en prod) | XSS facilité |
+| E9 | Lecture statut forge sans vérif ownership (cache Redis) | Fuite données forge d'autrui |
 
 ### MOYENS
 
@@ -188,6 +189,13 @@ Si des risques CRITIQUES sont identifiés :
 - Si déjà en prod : envisager hotfix immédiat.
 
 Sinon : merger possible, ajouter les tests recommandés en suite.
+
+### Étape 7 — Mettre à jour `docs/08_qa_securite.md` (obligatoire)
+
+Après chaque audit :
+- Si un nouveau vecteur est découvert → l'ajouter à la section 2 avec numéro, description, risque, statut.
+- Si un vecteur existant change de statut (⚠️ EN COURS → ✅ FAIT) → le mettre à jour.
+- Si la correction recommandée a été appliquée → marquer ✅ FAIT avec la measure de protection.
 
 ---
 

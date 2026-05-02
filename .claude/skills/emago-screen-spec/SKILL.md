@@ -24,7 +24,7 @@ Rédige des specs UI/UX d'écran Emago cohérentes avec le design system du proj
 ## Quand NE PAS utiliser ce skill
 
 - Pour un composant isolé (ShipCard, Badge…) → utilise `emago-component-spec`.
-- Pour valider qu'une page existante respecte le design system → utilise `emago-design-system-validator`.
+- Pour valider qu'une page existante respecte le design system → effectuer une revue visuelle directe ou utiliser `emago-attack-vector-audit` pour la partie sécurité.
 - Pour le code React lui-même → utilise `emago-page-scaffold`.
 
 ---

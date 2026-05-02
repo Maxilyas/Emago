@@ -23,8 +23,7 @@ Génère des pages React/TypeScript Emago cohérentes avec l'architecture fronte
 
 ## Quand NE PAS utiliser ce skill
 
-- Pour un composant isolé (pas une page entière) → utilise `emago-component-react-emago`.
-- Pour un handler WebSocket → utilise `emago-ws-handler-emago`.
+- Pour un composant isolé (pas une page entière) ou un handler WebSocket → utilise `emago-component-scaffold`.
 - Pour la spec UI/UX (avant impl) → utilise `emago-screen-spec`.
 
 ---
