@@ -25,19 +25,15 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        """
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_combat_logs_attacker_snapshot
-        ON combat_logs USING GIN (attacker_ships_snapshot jsonb_path_ops)
-        """
+        "CREATE INDEX IF NOT EXISTS idx_combat_logs_attacker_snapshot "
+        "ON combat_logs USING GIN (attacker_ships_snapshot jsonb_path_ops)"
     )
     op.execute(
-        """
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_combat_logs_defender_snapshot
-        ON combat_logs USING GIN (defender_ships_snapshot jsonb_path_ops)
-        """
+        "CREATE INDEX IF NOT EXISTS idx_combat_logs_defender_snapshot "
+        "ON combat_logs USING GIN (defender_ships_snapshot jsonb_path_ops)"
     )
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_combat_logs_attacker_snapshot")
-    op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_combat_logs_defender_snapshot")
+    op.execute("DROP INDEX IF EXISTS idx_combat_logs_attacker_snapshot")
+    op.execute("DROP INDEX IF EXISTS idx_combat_logs_defender_snapshot")
