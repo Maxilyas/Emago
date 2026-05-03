@@ -35,6 +35,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import CombatLog, ScarTag, Ship, ShipScar, ShipStatus
+from app.services.module_inventory_service import create_loot_crate
 from app.services.ship_stats_service import (
     GRADE_SHIELD_REGEN,
     get_current_stats,
@@ -557,9 +558,15 @@ async def resolve_combat(
     # --- Préchargement des tags de cicatrices depuis la BDD ---
     all_scar_tags = (await db.execute(select(ScarTag))).scalars().all()
 
+    # --- Identifiants combat + propriétaires (nécessaires dans la boucle) ---
+    combat_id = uuid.uuid4()
+    attacker_owner_id = att_ships_db[0].owner_id if att_ships_db else None
+    defender_owner_id = def_ships_db[0].owner_id if def_ships_db else None
+
     # --- Persistance des effets sur les Ship DB ---
     all_combatants = att_combatants + def_combatants
     cs_by_id = {cs.ship_id: cs for cs in all_combatants}
+    loot_crates_events: list[dict] = []
 
     for ship_db in att_ships_db + def_ships_db:
         cs = cs_by_id.get(ship_db.id)
@@ -567,8 +574,26 @@ async def resolve_combat(
             continue
 
         if not cs.alive:
+            # ── Loot crate pour le vainqueur ──────────────────────────────
+            is_attacker_ship = (ship_db.owner_id == attacker_owner_id)
+            recipient_id  = defender_owner_id if is_attacker_ship else attacker_owner_id
+            loot_chance   = 0.20 if is_attacker_ship else 0.30
+            if recipient_id and _srng_combat.random() < loot_chance:
+                ship_display = ship_db.name or ship_db.ship_type
+                await create_loot_crate(
+                    player_id=recipient_id,
+                    crate_type="STANDARD",
+                    source="COMBAT",
+                    source_ship_name=ship_display,
+                    source_battle_id=str(combat_id),
+                    db=db,
+                )
+                loot_crates_events.append({
+                    "recipient": str(recipient_id),
+                    "source_ship": ship_display,
+                })
+
             # Vaisseau détruit — supprimé de la base (GDD §4 : perd toute son XP)
-            # Le vaisseau disparaît définitivement du hangar du joueur
             await db.delete(ship_db)
             continue
 
@@ -617,10 +642,6 @@ async def resolve_combat(
             })
 
     # --- CombatLog (replay complet) ---
-    combat_id = uuid.uuid4()
-    attacker_owner_id = att_ships_db[0].owner_id if att_ships_db else None
-    defender_owner_id = def_ships_db[0].owner_id if def_ships_db else None
-
     # Snapshots des vaisseaux pour le rapport (colonnes réelles du modèle CombatLog)
     att_snapshot = [
         {
@@ -695,6 +716,7 @@ async def resolve_combat(
         "grade_ups":      grade_up_events,
         "scars":          scar_events,
         "synergies":      {"attacker": att_synergie_log, "defender": def_synergie_log},
+        "loot_crates":    loot_crates_events,
     }
 
     # --- Broadcast WebSocket (hors transaction) ---

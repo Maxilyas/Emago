@@ -26,10 +26,11 @@ from typing import Any
 
 import redis.asyncio as aioredis
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis_client import get_redis
-from app.models.models import Ship, ShipModule
+from app.models.models import PlayerModule, Ship, ShipModule
 
 
 # Slots par rareté — copie locale pour éviter l'import circulaire
@@ -98,6 +99,17 @@ _MODULE_EFFECT: dict[str, dict[str, str]] = {
 
 # Niveaux requis pour les slots premium (GDD §3)
 _PREMIUM_REQUIRED_LEVELS = {4, 5}
+
+# ── Traits Phase 2 ────────────────────────────────────────────────────────────
+# Multiplicateur appliqué au boost de base du module selon son trait
+_TRAIT_BOOST_MULT: dict[str, float] = {
+    "battle_hardened": 1.10,
+    "overclocked":     1.15,
+    "military_grade":  1.12,
+    "lightweight":     1.05,
+}
+# Bonus de vitesse absolu (ajouté après le calcul ratio, avant plafonnement)
+_TRAIT_SPEED_FLAT = 0.03   # lightweight uniquement
 
 # TTL Redis pour current_stats
 _STATS_TTL = 300        # secondes
@@ -277,6 +289,7 @@ def _compute_current_stats(
     # On accumule les ratios de boost (pas les valeurs absolues) avant de plafonner
     module_boost_ratio: dict[str, float] = {s: 0.0 for s in base}
     modules_detail: list[dict] = []
+    speed_flat_bonus = 0.0   # bonus vitesse absolu (trait lightweight)
 
     for mod in modules:
         if mod.module_type not in _MODULE_EFFECT:
@@ -288,8 +301,24 @@ def _compute_current_stats(
 
         base_boost = _MODULE_BOOST.get(mod.level, 0.0)
         has_affinity = (_enum_val(ship.class_) == affinity_class)
-        effective_boost = base_boost * (_AFFINITY_MULT if has_affinity else 1.0)
 
+        # ── Traits (Phase 2) ───────────────────────────��──────────────
+        pm: PlayerModule | None = getattr(mod, "player_module", None)
+        if pm and pm.trait:
+            if pm.trait == "resonant":
+                # resonant : l'affinité s'applique quelle que soit la classe
+                has_affinity = True
+            if pm.trait == "lightweight":
+                speed_flat_bonus += _TRAIT_SPEED_FLAT
+            # multiplicateur de boost du trait
+            base_boost *= _TRAIT_BOOST_MULT.get(pm.trait, 1.0)
+            # bonus traits supplémentaires (slots 2 et 3)
+            if pm.bonus_trait:
+                base_boost *= _TRAIT_BOOST_MULT.get(pm.bonus_trait, 1.0)
+            if pm.bonus_trait_2:
+                base_boost *= _TRAIT_BOOST_MULT.get(pm.bonus_trait_2, 1.0)
+
+        effective_boost = base_boost * (_AFFINITY_MULT if has_affinity else 1.0)
         module_boost_ratio[stat_name] = module_boost_ratio.get(stat_name, 0.0) + effective_boost
 
         modules_detail.append({
@@ -297,7 +326,9 @@ def _compute_current_stats(
             "type":           mod.module_type,
             "level":          mod.level,
             "affinity_bonus": has_affinity,
-            "boost_applied":  round(effective_boost * 100, 2),  # en %
+            "boost_applied":  round(effective_boost * 100, 2),
+            "trait":          pm.trait if pm else None,
+            "is_corrupted":   pm.is_corrupted if pm else False,
         })
 
     # --- Étape 3 : application des boosts + plafonnement ---
@@ -334,6 +365,25 @@ def _compute_current_stats(
             final[stat] = round(max(0.0, target), 2)
         else:
             final[stat] = int(max(0, round(target)))
+
+    # --- Étape 4 : bonus vitesse flat (lightweight) ---
+    if speed_flat_bonus > 0 and "speed" in final:
+        cap_speed = base.get("speed", 0.0) * (1.0 + _STAT_CAP_RATIO)
+        final["speed"] = round(min(cap_speed, final["speed"] + speed_flat_bonus), 1)
+
+    # --- Étape 5 : malus corruption (appliqué en dernier, ne peut pas être capé) ---
+    for mod in modules:
+        pm_c: PlayerModule | None = getattr(mod, "player_module", None)
+        if pm_c and pm_c.is_corrupted and pm_c.corruption_malus_stat and pm_c.corruption_malus_value:
+            stat = pm_c.corruption_malus_stat
+            if stat in final:
+                raw = float(final[stat]) * (1.0 - pm_c.corruption_malus_value)
+                if stat == "speed":
+                    final[stat] = round(max(0.0, raw), 1)
+                elif stat in ("stealth", "support_aura"):
+                    final[stat] = round(max(0.0, raw), 2)
+                else:
+                    final[stat] = int(max(0, round(raw)))
 
     # --- Résultat enrichi ---
     return {
@@ -378,6 +428,7 @@ async def _load_ship_with_modules(
 
     mods_result = await db.execute(
         select(ShipModule)
+        .options(selectinload(ShipModule.player_module))
         .where(ShipModule.ship_id == ship_id)
         .order_by(ShipModule.slot_index)
     )

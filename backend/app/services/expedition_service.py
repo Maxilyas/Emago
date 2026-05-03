@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import Planet, Ship, ShipScar
+from app.services.module_inventory_service import create_loot_crate
 
 # ---------------------------------------------------------------------------
 # Durées d'expédition
@@ -251,7 +252,7 @@ async def resolve_expedition(
         "narrative": event["narrative"],
         "resources_gained": {},
         "xp_gained": {},
-        "modules_found": [],
+        "loot_crates_created": [],
         "scars_earned": [],
         "duration": duration.value,
     }
@@ -303,13 +304,27 @@ async def resolve_expedition(
         lead_ship.combat_xp = (lead_ship.combat_xp or 0) + xp
         db.add(lead_ship)
 
-    # ── Module drop ──────────────────────────────────────────────────────
+    # ── Module drop → LootCrate ──────────────────────────────────────────
     if outcomes.get("module_drop"):
         rare_ch = outcomes.get("module_rare_chance", 0.0)
-        mod = _roll_module(seed, rare_ch)
-        report["modules_found"].append(mod)
-        # Le module est ajouté à l'inventaire du joueur (table player_module_inventory)
-        # Pour l'instant on log juste — l'inventaire sera implémenté avec la table dédiée
+        # PREMIUM si event exceptionnel OU expédition longue
+        crate_type = (
+            "PREMIUM"
+            if rare_ch >= 0.4 or duration == ExpeditionDuration.LONG
+            else "STANDARD"
+        )
+        crate = await create_loot_crate(
+            player_id=lead_ship.owner_id,
+            crate_type=crate_type,
+            source="EXPEDITION",
+            source_ship_name=event["title"],  # titre de l'événement comme mémoire
+            db=db,
+        )
+        report["loot_crates_created"].append({
+            "crate_id":   str(crate.id),
+            "crate_type": crate_type,
+            "event":      event["id"],
+        })
 
     # ── Cicatrices ───────────────────────────────────────────────────────
     if "scar" in outcomes:
