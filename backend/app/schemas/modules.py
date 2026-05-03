@@ -56,7 +56,7 @@ class LootCrateOut(BaseModel):
 class LootCrateOpenResult(BaseModel):
     crate_id: UUID
     module: PlayerModuleOut | None
-    shards: int
+    shards: dict[str, int]
     empty: bool
 
 

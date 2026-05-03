@@ -568,11 +568,9 @@ async def open_loot_crate(
     shards_dict: dict[str, int] = dict(player.module_shards or {})
     if result_module:
         key = result_module.module_type
-        shards_dict[key] = shards_dict.get(key, 0) + shards
     else:
-        # Shards d'un type aléatoire si pas de module
         key = random.choice(list(_MODULE_PRIMARY_RESOURCE.keys()))
-        shards_dict[key] = shards_dict.get(key, 0) + shards
+    shards_dict[key] = shards_dict.get(key, 0) + shards
     player.module_shards = shards_dict
     db.add(player)
 
@@ -584,7 +582,9 @@ async def open_loot_crate(
     crate.shards_awarded = shards
     db.add(crate)
 
-    return {"module": result_module, "shards": shards, "empty": empty}
+    # Retourner les shards gagnés sous forme de dict {type: quantité}
+    shards_gained: dict[str, int] = {key: shards}
+    return {"module": result_module, "shards": shards_gained, "empty": empty}
 
 
 async def get_shard_counts(player_id: UUID, db: AsyncSession) -> dict[str, int]:
