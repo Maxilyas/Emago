@@ -236,6 +236,33 @@ export interface FleetResponse {
   ship_count: number
 }
 
+// Vaisseau fantôme NPC
+export interface GhostShipOut {
+  id: string
+  name: string
+  ship_type: string
+  rarity: 'COMMON' | 'RARE' | 'LEGENDARY'
+  threat_level: 1 | 2 | 3
+  current_hull: number
+  max_hull: number
+  is_defeated: boolean
+  respawn_at: string | null
+}
+
+export interface SystemResponse {
+  slots: GalaxySlot[]
+  ghost_ships: GhostShipOut[]
+}
+
+export interface GalaxySlot {
+  position: number
+  planet_id: string | null
+  planet_name: string | null
+  owner_id: string | null
+  owner_username: string | null
+  is_mine: boolean
+}
+
 // Classement
 export interface RankingEntry {
   rank: number

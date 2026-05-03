@@ -16,10 +16,139 @@ import { api } from '@/lib/api'
 import { ApiError } from '@/lib/api'
 import { LoadingSpinner, Modal } from '@/components/ui'
 import { fmt, fmtCountdown } from '@/lib/utils'
-import type { ShipSummary, FleetResponse } from '@/types'
+import type { ShipSummary, FleetResponse, SystemResponse, GhostShipOut } from '@/types'
 import { shipsApi } from '@/api/ships'
 import { GalaxyMap } from '@/components/galaxy/GalaxyMap'
 import type { SystemPlanet } from '@/components/galaxy/GalaxyMap'
+
+// ─── Modal attaque ghost ship ──────────────────────────────────���──────────────
+
+const RARITY_COLOR: Record<string, string> = {
+  COMMON: '#9ca3af', RARE: '#818cf8', LEGENDARY: '#fbbf24',
+}
+const THREAT_LABEL: Record<number, string> = { 1: 'Faible', 2: 'Modérée', 3: 'Élevée' }
+
+function AttackGhostModal({
+  ghost, open, onClose,
+}: { ghost: GhostShipOut | null; open: boolean; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [selectedShips, setSelectedShips] = useState<string[]>([])
+  const [result, setResult] = useState<{ won: boolean; loot: { metal: number; crystal: number }; log: string[] } | null>(null)
+
+  const { data: ships } = useQuery({
+    queryKey: ['ships'],
+    queryFn: shipsApi.list,
+    enabled: open,
+  })
+  const dockedShips = (ships ?? []).filter(s => s.status === 'DOCKED')
+
+  const attackMutation = useMutation({
+    mutationFn: () => api.post<{ won: boolean; loot: { metal: number; crystal: number }; log: string[] }>(
+      `/galaxy/ghost_ships/${ghost!.id}/attack`,
+      { ship_ids: selectedShips },
+    ),
+    onSuccess: (data) => {
+      setResult(data)
+      qc.invalidateQueries({ queryKey: ['galaxy'] })
+      if (data.won) toast.success('Vaisseau fantôme vaincu !', { icon: '👻' })
+      else toast.error('Votre flotte a été repoussée.')
+    },
+    onError: (e: ApiError) => toast.error(e.detail || 'Erreur'),
+  })
+
+  function toggleShip(id: string) {
+    setSelectedShips(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  if (!ghost) return null
+  const color = RARITY_COLOR[ghost.rarity] ?? '#9ca3af'
+  const hpPct = ghost.max_hull > 0 ? ghost.current_hull / ghost.max_hull : 1
+
+  return (
+    <Modal open={open} onClose={() => { onClose(); setResult(null); setSelectedShips([]) }}
+      title="⚔️ Attaquer le vaisseau fantôme">
+      <div className="space-y-4">
+        {/* Infos ghost */}
+        <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: `${color}40`, background: `${color}08` }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-lg mr-2">👻</span>
+              <span className="font-semibold" style={{ color }}>{ghost.name}</span>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded font-mono" style={{ color, background: `${color}20` }}>
+              {ghost.rarity}
+            </span>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-gray-400">
+            <span>Menace : <span style={{ color }}>{THREAT_LABEL[ghost.threat_level]}</span></span>
+            <span>PV : {ghost.current_hull}/{ghost.max_hull}</span>
+          </div>
+          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-full rounded-full transition-all"
+              style={{ width: `${hpPct * 100}%`, backgroundColor: hpPct > 0.5 ? '#22c55e' : hpPct > 0.25 ? '#f59e0b' : '#ef4444' }} />
+          </div>
+        </div>
+
+        {/* Résultat combat */}
+        {result ? (
+          <div className={`rounded-lg p-3 border ${result.won ? 'border-green-700/40 bg-green-900/10' : 'border-red-700/40 bg-red-900/10'}`}>
+            <p className={`font-bold mb-2 ${result.won ? 'text-green-400' : 'text-red-400'}`}>
+              {result.won ? '✓ Victoire !' : '✗ Défaite'}
+            </p>
+            {result.won && (
+              <p className="text-sm text-yellow-400 mb-2">
+                💰 +{result.loot.metal.toLocaleString('fr-FR')} métal · +{result.loot.crystal.toLocaleString('fr-FR')} cristal
+              </p>
+            )}
+            <div className="space-y-0.5 max-h-32 overflow-y-auto">
+              {result.log.map((line, i) => (
+                <p key={i} className="text-xs text-gray-400">{line}</p>
+              ))}
+            </div>
+            <button onClick={() => { onClose(); setResult(null); setSelectedShips([]) }}
+              className="mt-3 w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors">
+              Fermer
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Sélection vaisseaux */}
+            <div>
+              <label className="block text-sm text-gray-300 mb-2">
+                Sélectionner vos vaisseaux ({selectedShips.length} choisi{selectedShips.length > 1 ? 's' : ''})
+              </label>
+              {dockedShips.length === 0 ? (
+                <p className="text-xs text-gray-500 italic">Aucun vaisseau disponible (DOCKED)</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                  {dockedShips.map(ship => {
+                    const sel = selectedShips.includes(ship.id)
+                    return (
+                      <button key={ship.id} onClick={() => toggleShip(ship.id)}
+                        className={`p-2 rounded-lg border text-left text-xs transition-all ${sel ? 'border-blue-500 bg-blue-900/20' : 'border-gray-700 hover:border-gray-500'}`}>
+                        <p className="font-medium text-white">{ship.ship_type.replace('_', ' ')}</p>
+                        <p className="text-gray-500">{ship.rarity} · G{ship.grade}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => attackMutation.mutate()}
+              disabled={selectedShips.length === 0 || attackMutation.isPending}
+              className="w-full py-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm rounded-lg font-medium transition-colors"
+            >
+              {attackMutation.isPending ? 'Combat en cours...' : `⚔️ Attaquer avec ${selectedShips.length} vaisseau${selectedShips.length > 1 ? 'x' : ''}`}
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Types fleet ──────────────────────────────────────────────────────────────
 
 interface IncomingFleet {
   fleet_id: string
@@ -32,16 +161,6 @@ interface IncomingFleet {
   ship_count: number
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface GalaxySlot {
-  position: number
-  planet_id: string | null
-  planet_name: string | null
-  owner_id: string | null
-  owner_username: string | null
-  is_mine: boolean
-}
 
 // ─── Hook flotte countdown ────────────────────────────────────────────────────
 
@@ -241,21 +360,18 @@ export function GalaxyPage() {
   const [galaxy, setGalaxy] = useState(1)
   const [system, setSystem] = useState(1)
   const [fleetTarget, setFleetTarget] = useState<{ g: number; s: number; p: number; planetId: string | null } | null>(null)
+  const [ghostTarget, setGhostTarget] = useState<GhostShipOut | null>(null)
 
-  // Charger les planètes de ce système depuis l'API
-  const { data: systemSlots, isLoading } = useQuery({
+  const { data: systemData, isLoading } = useQuery({
     queryKey: ['galaxy', galaxy, system],
-    queryFn: () => api.get<GalaxySlot[]>(`/galaxy?galaxy=${galaxy}&system=${system}`),
-    // Fallback si l'endpoint n'existe pas encore — données simulées
-    placeholderData: Array.from({ length: 15 }, (_, i) => ({
-      position: i + 1,
-      planet_id: null,
-      planet_name: null,
-      owner_id: null,
-      owner_username: null,
-      is_mine: false,
-    })) as GalaxySlot[],
+    queryFn: () => api.get<SystemResponse>(`/galaxy?galaxy=${galaxy}&system=${system}`),
   })
+
+  const systemSlots = systemData?.slots ?? Array.from({ length: 15 }, (_, i) => ({
+    position: i + 1, planet_id: null, planet_name: null,
+    owner_id: null, owner_username: null, is_mine: false,
+  }))
+  const ghostShips = systemData?.ghost_ships ?? []
 
   // Planètes du joueur pour le modal flotte
   const { data: myPlanets } = useQuery({
@@ -277,7 +393,6 @@ export function GalaxyPage() {
     refetchInterval: 10_000,
   })
 
-  const slots = systemSlots ?? []
 
   return (
     <div className="space-y-5 pb-20 lg:pb-0">
@@ -314,7 +429,7 @@ export function GalaxyPage() {
 
       {/* Carte galactique SVG interactive */}
       <GalaxyMap
-        planets={slots.map(s => ({
+        planets={systemSlots.map(s => ({
           position: s.position,
           planet_id: s.planet_id,
           name: s.planet_name,
@@ -322,13 +437,16 @@ export function GalaxyPage() {
           owner_username: s.owner_username,
           is_own: s.is_mine,
         }))}
+        ghostShips={ghostShips}
         currentPlayerId=""
         onSelectPlanet={(p) => {
           if (p.planet_id) {
             setFleetTarget({ g: galaxy, s: system, p: p.position, planetId: p.planet_id })
           }
         }}
+        onSelectGhost={(ghost) => setGhostTarget(ghost)}
         selectedPlanetId={fleetTarget?.planetId ?? null}
+        selectedGhostId={ghostTarget?.id ?? null}
       />
 
       {/* Flottes en transit */}
@@ -405,6 +523,13 @@ export function GalaxyPage() {
           </div>
         </div>
       )}
+
+      {/* Modal attaque ghost ship */}
+      <AttackGhostModal
+        ghost={ghostTarget}
+        open={ghostTarget !== null}
+        onClose={() => setGhostTarget(null)}
+      />
 
       {/* Modal envoi flotte */}
       {fleetTarget && (
