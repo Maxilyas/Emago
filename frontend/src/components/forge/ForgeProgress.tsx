@@ -1,12 +1,14 @@
 /**
  * ForgeProgress — affiche l'avancement d'une opération de forge.
- * Le countdown s'interpole côté client mais GET /forge/:id reste la vérité.
+ * Le countdown est calculé depuis completed_at (timestamp absolu) pour rester
+ * correct après un refresh — eta_seconds du serveur est figé à la création.
  */
 import React from 'react'
-import { useCountdown } from '@/hooks/useCountdown'
 import { ProgressBar } from '@/components/ui'
 import { fmtCountdown, fmtDate } from '@/lib/utils'
 import type { ForgeStatusResponse } from '@/types'
+
+const FORGE_TOTAL_SECONDS = 8 * 3600
 
 interface Props {
   forge: ForgeStatusResponse
@@ -14,8 +16,30 @@ interface Props {
 }
 
 export function ForgeProgress({ forge, onComplete }: Props) {
-  const { remaining, pct, done } = useCountdown(forge.eta_seconds, onComplete)
-  const isComplete = forge.is_completed ?? done
+  const [remaining, setRemaining] = React.useState(() =>
+    Math.max(0, Math.round((new Date(forge.completed_at).getTime() - Date.now()) / 1000)),
+  )
+  const completedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    completedRef.current = false
+    const tick = () => {
+      const left = Math.max(0, Math.round((new Date(forge.completed_at).getTime() - Date.now()) / 1000))
+      setRemaining(left)
+      if (left <= 0 && !completedRef.current) {
+        completedRef.current = true
+        onComplete?.()
+      }
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [forge.completed_at]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isComplete = !!forge.result_ship_id || remaining <= 0
+  const pct = isComplete
+    ? 100
+    : Math.round(Math.max(0, Math.min(100, ((FORGE_TOTAL_SECONDS - remaining) / FORGE_TOTAL_SECONDS) * 100)))
 
   return (
     <div className="panel space-y-3">

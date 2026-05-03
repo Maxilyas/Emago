@@ -44,7 +44,7 @@ export function ForgePage() {
   const { data: forgeHistory } = useQuery({
     queryKey: ['forge', 'history'],
     queryFn: forgeApi.history,
-    enabled: tab === 'history',
+    refetchInterval: 30_000,
   })
 
   const activeForges  = (forgeHistory ?? []).filter((f) => !f.is_completed)
@@ -133,6 +133,25 @@ export function ForgePage() {
 
       {tab === 'forge' && (
         <div className="space-y-5">
+
+          {/* Bandeau forge(s) en cours */}
+          {activeStatuses && activeStatuses.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">En cours</p>
+              <div className="space-y-2">
+                {activeStatuses.map((f) => (
+                  <ForgeProgress
+                    key={f.forge_id}
+                    forge={f}
+                    onComplete={() => {
+                      qc.invalidateQueries({ queryKey: ['forge', 'history'] })
+                      qc.invalidateQueries({ queryKey: ['ships'] })
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Sélection A / B */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
