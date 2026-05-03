@@ -142,7 +142,7 @@ export function InstalledModuleHoverCard({ children, mod }: {
   const stat = cfg?.stat ?? ''
   const statLabel = STAT_LABEL[stat] ?? stat
   const lvlStyle = LEVEL_STYLE[mod.level] ?? LEVEL_STYLE[1]
-  const traitCfg = mod.trait ? TRAIT_CONFIG[mod.trait] : null
+  const allTraits = [mod.trait, mod.bonus_trait, mod.bonus_trait_2].filter(Boolean) as string[]
 
   const content = (
     <div className="min-w-[200px] max-w-xs space-y-2.5 text-xs">
@@ -158,8 +158,8 @@ export function InstalledModuleHoverCard({ children, mod }: {
             >
               Nv.{mod.level}
             </span>
-            {mod.reinstall_charges !== undefined && (
-              <span style={{ color: (mod.reinstall_charges ?? 0) <= 1 ? '#f87171' : '#6b7280' }}>
+            {mod.reinstall_charges != null && (
+              <span style={{ color: mod.reinstall_charges <= 1 ? '#f87171' : '#6b7280' }}>
                 {mod.reinstall_charges}× charges
               </span>
             )}
@@ -176,19 +176,34 @@ export function InstalledModuleHoverCard({ children, mod }: {
         )}
       </div>
 
-      {/* Trait */}
-      {traitCfg && (
-        <div className="border-t border-white/10 pt-2">
-          <span className="font-semibold" style={{ color: traitCfg.color }}>{traitCfg.label}</span>
-          <p className="text-gray-400 mt-0.5 leading-relaxed">{traitCfg.description}</p>
+      {/* Traits avec descriptions */}
+      {allTraits.length > 0 && (
+        <div className="border-t border-white/10 pt-2 space-y-2">
+          {allTraits.map(t => {
+            const tc = TRAIT_CONFIG[t]
+            if (!tc) return null
+            return (
+              <div key={t}>
+                <span className="font-semibold" style={{ color: tc.color }}>{tc.label}</span>
+                <p className="text-gray-400 mt-0.5 leading-relaxed">{tc.description}</p>
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* Corruption */}
+      {/* Corruption — valeur exacte */}
       {mod.is_corrupted && (
         <div className="border-t border-red-900/50 pt-2">
           <div className="font-semibold text-red-400">☠ Module corrompu</div>
-          <p className="text-red-300 mt-0.5">Ce module applique un malus permanent sur une stat du vaisseau</p>
+          {mod.corruption_malus_stat && mod.corruption_malus_value != null ? (
+            <p className="text-red-300 mt-0.5">
+              Pénalité : −{(mod.corruption_malus_value * 100).toFixed(0)}%{' '}
+              {STAT_LABEL[mod.corruption_malus_stat] ?? mod.corruption_malus_stat} sur ce vaisseau
+            </p>
+          ) : (
+            <p className="text-red-300 mt-0.5">Malus permanent sur une stat du vaisseau</p>
+          )}
         </div>
       )}
     </div>

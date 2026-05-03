@@ -46,11 +46,14 @@ export interface ModuleDetail {
   level: 1 | 2 | 3 | 4 | 5
   affinity_bonus: boolean
   boost_applied: number
-  // Phase 3
   trait: string | null
+  bonus_trait: string | null
+  bonus_trait_2: string | null
   is_corrupted: boolean
-  player_module_id?: string
-  reinstall_charges?: number
+  corruption_malus_stat: string | null
+  corruption_malus_value: number | null
+  reinstall_charges: number | null
+  player_module_id: string | null
 }
 
 export interface CurrentStats extends BaseStats {

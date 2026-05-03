@@ -245,6 +245,7 @@ export function ShipStatPanel({ stats, baseStats, rarity, combatXp, grade }: Pro
             const traitCfg = mod?.trait ? TRAIT_CONFIG[mod.trait] : null
 
             if (mod && cfg) {
+              const allTraits = [mod.trait, mod.bonus_trait, mod.bonus_trait_2].filter(Boolean) as string[]
               return (
                 <InstalledModuleHoverCard key={i} mod={mod}>
                   <div className={`p-2.5 rounded-lg border cursor-default ${
@@ -267,29 +268,48 @@ export function ShipStatPanel({ stats, baseStats, rarity, combatXp, grade }: Pro
                       <span className="text-xs font-medium text-gray-200 truncate">{cfg.label}</span>
                     </div>
                     {/* Boost */}
-                    <div className="text-[10px] text-green-400 font-mono mb-1">
+                    <div className="text-[10px] text-green-400 font-mono mb-1.5">
                       +{mod.boost_applied.toFixed(1)}% {stat ? STAT_LABEL[stat] : ''}
-                    </div>
-                    {/* Badges */}
-                    <div className="flex flex-wrap gap-1">
                       {mod.affinity_bonus && (
-                        <span className="text-[10px] text-green-300 bg-green-900/20 px-1 py-0.5 rounded">Aff.</span>
-                      )}
-                      {traitCfg && (
-                        <span
-                          className="text-[10px] px-1 py-0.5 rounded"
-                          style={{ color: traitCfg.color, background: `${traitCfg.color}20` }}
-                        >
-                          {traitCfg.label}
-                        </span>
-                      )}
-                      {mod.is_corrupted && (
-                        <span className="text-[10px] text-red-400">☠</span>
-                      )}
-                      {mod.reinstall_charges !== undefined && mod.reinstall_charges <= 1 && (
-                        <span className="text-[10px] text-red-400 font-mono">{mod.reinstall_charges}×</span>
+                        <span className="text-green-600 ml-1">×aff.</span>
                       )}
                     </div>
+                    {/* Traits */}
+                    {allTraits.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {allTraits.map(t => {
+                          const tc = TRAIT_CONFIG[t]
+                          if (!tc) return null
+                          return (
+                            <span
+                              key={t}
+                              className="text-[10px] px-1 py-0.5 rounded border"
+                              style={{ color: tc.color, background: `${tc.color}15`, borderColor: `${tc.color}30` }}
+                            >
+                              {tc.label}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {/* Corruption malus — visible directement */}
+                    {mod.is_corrupted && (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="text-[10px] text-red-400 font-medium">☠</span>
+                        {mod.corruption_malus_stat && mod.corruption_malus_value != null ? (
+                          <span className="text-[10px] text-red-400 font-mono">
+                            −{(mod.corruption_malus_value * 100).toFixed(0)}%{' '}
+                            {STAT_LABEL[mod.corruption_malus_stat] ?? mod.corruption_malus_stat}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-red-500">corrompu</span>
+                        )}
+                      </div>
+                    )}
+                    {/* Charges faibles */}
+                    {mod.reinstall_charges !== null && mod.reinstall_charges !== undefined && mod.reinstall_charges <= 1 && (
+                      <div className="text-[10px] text-red-400 font-mono mt-0.5">{mod.reinstall_charges}× charge restante</div>
+                    )}
                   </div>
                 </InstalledModuleHoverCard>
               )

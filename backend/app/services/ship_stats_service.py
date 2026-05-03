@@ -381,13 +381,19 @@ def _compute_current_stats(
         module_boost_ratio[stat_name] = module_boost_ratio.get(stat_name, 0.0) + effective_boost
 
         modules_detail.append({
-            "slot":           mod.slot_index,
-            "type":           mod.module_type,
-            "level":          mod.level,
-            "affinity_bonus": has_affinity,
-            "boost_applied":  round(effective_boost * 100, 2),
-            "trait":          pm.trait if pm else None,
-            "is_corrupted":   pm.is_corrupted if pm else False,
+            "slot":                  mod.slot_index,
+            "type":                  mod.module_type,
+            "level":                 mod.level,
+            "affinity_bonus":        has_affinity,
+            "boost_applied":         round(effective_boost * 100, 2),
+            "trait":                 pm.trait if pm else None,
+            "bonus_trait":           pm.bonus_trait if pm else None,
+            "bonus_trait_2":         pm.bonus_trait_2 if pm else None,
+            "is_corrupted":          pm.is_corrupted if pm else False,
+            "corruption_malus_stat": pm.corruption_malus_stat if pm else None,
+            "corruption_malus_value": float(pm.corruption_malus_value) if pm and pm.corruption_malus_value else None,
+            "reinstall_charges":     pm.reinstall_charges if pm else None,
+            "player_module_id":      str(pm.id) if pm else None,
         })
 
     # --- Étape 3 : application des boosts + plafonnement ---
