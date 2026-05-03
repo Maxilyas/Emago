@@ -3,13 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { shipsApi } from '@/api/ships'
+import { modulesApi } from '@/api/modules'
 import { ShipStatPanel } from '@/components/ships/ShipStatPanel'
-import { Modal, LoadingSpinner, Badge, Tabs } from '@/components/ui'
+import { Modal, LoadingSpinner, Tabs } from '@/components/ui'
 import { ApiError } from '@/lib/api'
-import { RARITY_CONFIG, MODULE_CONFIG, type ModuleType, type Rarity } from '@/types'
+import { RARITY_CONFIG, MODULE_CONFIG, TRAIT_CONFIG, type Rarity, type PlayerModule } from '@/types'
 import { rarityColor, rarityGlow, fmt, timeAgo } from '@/lib/utils'
-
-const MODULE_LEVELS = [1, 2, 3, 4, 5] as const
 
 export function ShipDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -270,82 +269,153 @@ function ModuleManager({ ship, onInstall, onRemove }: {
   )
 }
 
-// ─── Modal installation ───────────────────────────────────────────────────────
+// ─── Modal installation depuis l'inventaire ───────────────────────────────────
 function InstallModuleModal({ open, slot, shipId, isPremiumSlot, onClose, onInstalled }: {
   open: boolean; slot: number; shipId: string; isPremiumSlot: boolean
   onClose: () => void; onInstalled: () => void
 }) {
-  const [moduleType, setModuleType] = useState<ModuleType>('CANNON')
-  const [level, setLevel] = useState<1 | 2 | 3 | 4 | 5>(1)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [filterType, setFilterType] = useState<string>('ALL')
   const qc = useQueryClient()
 
-  const allowedLevels = isPremiumSlot ? MODULE_LEVELS : MODULE_LEVELS.slice(0, 3) as unknown as typeof MODULE_LEVELS
+  const { data: inventory = [], isLoading } = useQuery({
+    queryKey: ['modules', 'inventory'],
+    queryFn: modulesApi.inventory,
+    enabled: open,
+  })
+
+  const available = inventory.filter((m: PlayerModule) => {
+    if (m.is_destroyed || m.reinstall_charges <= 0) return false
+    if (isPremiumSlot) return true
+    return m.level <= 3
+  })
+
+  const filtered = filterType === 'ALL'
+    ? available
+    : available.filter((m: PlayerModule) => m.module_type === filterType)
 
   const { mutate, isPending } = useMutation({
-    mutationFn: () => shipsApi.modules.install(shipId, slot, { module_type: moduleType, level }),
+    mutationFn: () => shipsApi.modules.install(shipId, slot, { module_id: selected! }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['ship', shipId] })
+      qc.invalidateQueries({ queryKey: ['modules'] })
       const capped = res.cap_reached.length > 0
       toast.success(
         capped ? `Module installé — cap +150% atteint sur : ${res.cap_reached.join(', ')}` : 'Module installé !',
         { duration: 4000 }
       )
+      setSelected(null)
       onInstalled()
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.detail : 'Erreur'),
   })
 
-  return (
-    <Modal open={open} onClose={onClose} title={`🔧 Installer dans le slot #${slot + 1}`} size="sm">
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm text-gray-400 mb-2">Type de module</label>
-          <div className="grid grid-cols-2 gap-2">
-            {(Object.entries(MODULE_CONFIG) as [ModuleType, typeof MODULE_CONFIG[ModuleType]][]).map(([type, cfg]) => (
-              <button
-                key={type}
-                onClick={() => setModuleType(type)}
-                className={`p-2 rounded-lg border text-left text-sm transition-all ${
-                  moduleType === type
-                    ? 'border-accent-blue bg-accent-blue/10 text-accent-blue'
-                    : 'border-surface-border text-gray-300 hover:border-gray-500'
-                }`}
-              >
-                {cfg.icon} {cfg.label}
-              </button>
-            ))}
-          </div>
-        </div>
+  const presentTypes = [...new Set(available.map((m: PlayerModule) => m.module_type))]
 
-        <div>
-          <label className="block text-sm text-gray-400 mb-2">Niveau</label>
-          <div className="flex gap-2">
-            {MODULE_LEVELS.map((l) => {
-              const disabled = !allowedLevels.includes(l)
+  return (
+    <Modal open={open} onClose={onClose} title={`🔧 Installer dans le slot #${slot + 1}`} size="md">
+      <div className="space-y-3">
+        {isPremiumSlot && (
+          <p className="text-xs text-yellow-500">✦ Slot premium — tous les niveaux autorisés</p>
+        )}
+        {!isPremiumSlot && (
+          <p className="text-xs text-gray-500">Slot standard — niveaux I à III uniquement</p>
+        )}
+
+        {/* Filtres type */}
+        {presentTypes.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setFilterType('ALL')}
+              className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
+                filterType === 'ALL' ? 'border-accent-blue bg-accent-blue/10 text-accent-blue' : 'border-surface-border text-gray-500'
+              }`}
+            >
+              Tous
+            </button>
+            {presentTypes.map((type) => {
+              const cfg = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG]
               return (
                 <button
-                  key={l}
-                  onClick={() => !disabled && setLevel(l)}
-                  disabled={disabled}
-                  title={disabled ? 'Slot standard — niveau IV/V nécessite un slot premium' : `Niveau ${l}`}
-                  className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-all ${
-                    level === l && !disabled
-                      ? 'border-accent-blue bg-accent-blue/10 text-accent-blue'
-                      : disabled
-                      ? 'border-surface-border text-gray-700 cursor-not-allowed'
-                      : 'border-surface-border text-gray-300 hover:border-gray-500'
+                  key={type}
+                  onClick={() => setFilterType(type)}
+                  className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
+                    filterType === type ? 'border-accent-blue bg-accent-blue/10 text-accent-blue' : 'border-surface-border text-gray-500'
                   }`}
                 >
-                  {l === 4 || l === 5 ? `${l}✦` : l}
+                  {cfg?.icon} {cfg?.label ?? type}
                 </button>
               )
             })}
           </div>
-          {isPremiumSlot && <p className="text-xs text-yellow-500 mt-1">✦ Slot premium — niveaux IV et V autorisés</p>}
+        )}
+
+        {/* Liste modules */}
+        <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+          {isLoading ? (
+            <div className="flex justify-center py-6"><LoadingSpinner /></div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-400 text-sm">Aucun module disponible</p>
+              <p className="text-gray-600 text-xs mt-1">
+                Obtenez des modules via les expéditions, combats ou caisses de butin
+              </p>
+            </div>
+          ) : (
+            filtered.map((mod: PlayerModule) => {
+              const cfg = MODULE_CONFIG[mod.module_type]
+              const traitCfg = mod.trait ? TRAIT_CONFIG[mod.trait] : null
+              const isSelected = selected === mod.id
+              return (
+                <button
+                  key={mod.id}
+                  onClick={() => setSelected(isSelected ? null : mod.id)}
+                  className={`w-full text-left p-2.5 rounded-lg border transition-all ${
+                    isSelected
+                      ? 'border-accent-blue bg-accent-blue/10'
+                      : 'border-surface-border hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span>{cfg?.icon ?? '🔧'}</span>
+                      <span className="text-sm text-gray-200">{cfg?.label ?? mod.module_type}</span>
+                      <span className="text-xs text-gray-500">Nv.{mod.level}</span>
+                    </div>
+                    <span className="text-xs text-gray-500 font-mono">{mod.reinstall_charges}×</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {traitCfg && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded-full"
+                        style={{ color: traitCfg.color, background: `${traitCfg.color}20` }}
+                      >
+                        {traitCfg.label}
+                      </span>
+                    )}
+                    {mod.is_corrupted && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full text-red-400 bg-red-900/20">
+                        ☠ Corrompu
+                      </span>
+                    )}
+                    {mod.memory_ship_name && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full text-purple-400 bg-purple-900/20">
+                        📜 {mod.memory_ship_name}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              )
+            })
+          )}
         </div>
 
-        <button className="btn-primary w-full" disabled={isPending} onClick={() => mutate()}>
-          {isPending ? '⏳ Installation…' : '🔧 Installer'}
+        <button
+          className="btn-primary w-full"
+          disabled={!selected || isPending}
+          onClick={() => mutate()}
+        >
+          {isPending ? '⏳ Installation…' : selected ? '🔧 Installer ce module' : 'Sélectionnez un module'}
         </button>
       </div>
     </Modal>

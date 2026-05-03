@@ -46,6 +46,11 @@ export interface ModuleDetail {
   level: 1 | 2 | 3 | 4 | 5
   affinity_bonus: boolean
   boost_applied: number
+  // Phase 3
+  trait: string | null
+  is_corrupted: boolean
+  player_module_id?: string
+  reinstall_charges?: number
 }
 
 export interface CurrentStats extends BaseStats {
@@ -56,6 +61,50 @@ export interface CurrentStats extends BaseStats {
   modules: ModuleDetail[]
   slots_total: number
   slots_premium: number
+  // Phase 3 — doctrines & résonances
+  doctrine: string | null
+  doctrine_active: boolean
+  resonances: string[]
+  evasion_chance: number
+  damage_reduction: number
+  riposte_chance: number
+}
+
+// ── Inventaire de modules (Phase 3) ─────────────────────────────────────────
+export type ModuleObtainedFrom = 'EXPEDITION' | 'COMBAT_LOOT' | 'CRAFTED' | 'DAILY_REWARD'
+export type LootCrateType = 'STANDARD' | 'PREMIUM' | 'ADMIRAL'
+
+export interface PlayerModule {
+  id: string
+  module_type: ModuleType
+  level: 1 | 2 | 3 | 4 | 5
+  trait: string | null
+  trait_value: number | null
+  bonus_trait: string | null
+  bonus_trait_2: string | null
+  is_corrupted: boolean
+  corruption_malus_stat: string | null
+  corruption_malus_value: number | null
+  reinstall_charges: number
+  is_destroyed: boolean
+  obtained_from: ModuleObtainedFrom
+  memory_ship_name: string | null
+  obtained_at: string
+}
+
+export interface LootCrate {
+  id: string
+  crate_type: LootCrateType
+  source: string
+  source_ship_name: string | null
+  obtained_at: string
+}
+
+export interface LootCrateOpenResult {
+  crate_id: string
+  module: PlayerModule | null
+  shards: Record<string, number>
+  empty: boolean
 }
 
 // Vaisseaux
@@ -119,8 +168,7 @@ export interface ModuleSlot {
 }
 
 export interface InstallModuleRequest {
-  module_type: ModuleType
-  level: 1 | 2 | 3 | 4 | 5
+  module_id: string
 }
 
 // Forge
@@ -299,6 +347,35 @@ export const FORGE_COSTS: Record<ShipType, { metal: number; crystal: number; deu
   frigate_exploration: { metal: 6000,  crystal: 3000,  deuterium: 3000 },
   cruiser_attack:      { metal: 60000, crystal: 21000, deuterium: 6000 },
   cruiser_defense:     { metal: 90000, crystal: 30000, deuterium: 6000 },
+}
+
+export const DOCTRINE_CONFIG: Record<string, { label: string; icon: string; color: string; description: string }> = {
+  BERSERKER:    { label: 'Berserker',     icon: '⚔️',  color: '#ef4444', description: '+20% DPS · −25% bouclier' },
+  FORTERESSE:   { label: 'Forteresse',   icon: '🏰',  color: '#3b82f6', description: '−40% vitesse · 50% réd. dégâts' },
+  FANTOME:      { label: 'Fantôme',      icon: '👻',  color: '#8b5cf6', description: '15% évasion · cargo = 0' },
+  AMPLIFICATEUR:{ label: 'Amplificateur',icon: '📡',  color: '#22d3ee', description: '×2 aura soutien · −30% DPS' },
+}
+
+export const RESONANCE_CONFIG: Record<string, { label: string; icon: string; description: string }> = {
+  BASTION:    { label: 'Bastion',    icon: '🔒', description: 'BLINDAGE + BOUCLIER — boosts ×1.10' },
+  RIPOSTE:    { label: 'Riposte',   icon: '⚡', description: 'CANON + BOUCLIER — 5 % contre-tir' },
+  VELOCITE:   { label: 'Vélocité',  icon: '🚀', description: 'PROPULSEUR + CARGO — boosts ×1.10' },
+  OVERCHARGE: { label: 'Surcharge', icon: '💥', description: 'CANON + ÉMETTEUR — boosts ×1.10' },
+}
+
+export const TRAIT_CONFIG: Record<string, { label: string; color: string }> = {
+  battle_hardened: { label: 'Endurci au combat', color: '#f97316' },
+  overclocked:     { label: 'Surcadencé',        color: '#eab308' },
+  pristine:        { label: 'Pristine',           color: '#22d3ee' },
+  resonant:        { label: 'Résonant',           color: '#a78bfa' },
+  lightweight:     { label: 'Allégé',             color: '#4ade80' },
+  military_grade:  { label: 'Grade militaire',    color: '#ef4444' },
+}
+
+export const LOOT_CRATE_CONFIG: Record<LootCrateType, { label: string; icon: string; color: string; glow: string }> = {
+  STANDARD: { label: 'Caisse Standard', icon: '📦', color: '#6b7280', glow: 'rgba(107,114,128,0.4)' },
+  PREMIUM:  { label: 'Caisse Premium',  icon: '💎', color: '#a78bfa', glow: 'rgba(167,139,250,0.5)' },
+  ADMIRAL:  { label: 'Caisse Amiral',   icon: '👑', color: '#ffd700', glow: 'rgba(255,215,0,0.6)' },
 }
 
 // XP nécessaire pour le prochain grade

@@ -4,7 +4,10 @@
  */
 import React from 'react'
 import { StatBar, Badge } from '@/components/ui'
-import { GRADE_CONFIG, MODULE_CONFIG, type CurrentStats, type Rarity } from '@/types'
+import {
+  GRADE_CONFIG, MODULE_CONFIG, DOCTRINE_CONFIG, RESONANCE_CONFIG, TRAIT_CONFIG,
+  type CurrentStats, type Rarity,
+} from '@/types'
 import { rarityColor, xpProgress, fmt } from '@/lib/utils'
 
 interface Props {
@@ -90,6 +93,61 @@ export function ShipStatPanel({ stats, baseStats, rarity, combatXp, grade }: Pro
         })}
       </div>
 
+      {/* Doctrine active */}
+      {stats.doctrine_active && stats.doctrine && DOCTRINE_CONFIG[stats.doctrine] && (() => {
+        const doc = DOCTRINE_CONFIG[stats.doctrine]
+        return (
+          <div
+            className="panel"
+            style={{ borderColor: `${doc.color}40`, boxShadow: `0 0 16px ${doc.color}20` }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">{doc.icon}</span>
+              <span className="font-bold text-sm" style={{ color: doc.color }}>Doctrine — {doc.label}</span>
+            </div>
+            <p className="text-xs text-gray-400">{doc.description}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {stats.evasion_chance > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900/30 text-purple-300 border border-purple-500/30">
+                  👻 {(stats.evasion_chance * 100).toFixed(0)}% évasion
+                </span>
+              )}
+              {stats.damage_reduction > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-300 border border-blue-500/30">
+                  🛡 {(stats.damage_reduction * 100).toFixed(0)}% réd. dégâts
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Résonances actives */}
+      {stats.resonances && stats.resonances.length > 0 && (
+        <div className="panel">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Résonances</h3>
+          <div className="space-y-1.5">
+            {stats.resonances.map((resId) => {
+              const res = RESONANCE_CONFIG[resId]
+              if (!res) return null
+              return (
+                <div key={resId} className="flex items-center gap-2 text-xs">
+                  <span>{res.icon}</span>
+                  <span className="text-amber-300 font-medium">{res.label}</span>
+                  <span className="text-gray-500">— {res.description}</span>
+                </div>
+              )
+            })}
+            {stats.riposte_chance > 0 && (
+              <div className="flex items-center gap-2 text-xs mt-1">
+                <span>⚡</span>
+                <span className="text-yellow-300">{(stats.riposte_chance * 100).toFixed(0)}% contre-tir actif</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Modules installés */}
       {stats.modules.length > 0 && (
         <div className="panel">
@@ -97,14 +155,29 @@ export function ShipStatPanel({ stats, baseStats, rarity, combatXp, grade }: Pro
           <div className="space-y-2">
             {stats.modules.map((mod) => {
               const modCfg = MODULE_CONFIG[mod.type]
+              const traitCfg = mod.trait ? TRAIT_CONFIG[mod.trait] : null
               return (
                 <div key={mod.slot} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-base">{modCfg?.icon ?? '🔧'}</span>
                     <span className="text-gray-300">{modCfg?.label ?? mod.type}</span>
                     <span className="text-xs text-gray-500">Nv.{mod.level}</span>
                     {mod.affinity_bonus && (
                       <span className="text-xs text-green-400 bg-green-900/30 px-1 rounded">Affinité</span>
+                    )}
+                    {traitCfg && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                        style={{ color: traitCfg.color, background: `${traitCfg.color}20` }}
+                      >
+                        {traitCfg.label}
+                      </span>
+                    )}
+                    {mod.is_corrupted && (
+                      <span className="text-[10px] px-1 py-0.5 rounded text-red-400 bg-red-900/20">☠</span>
+                    )}
+                    {mod.reinstall_charges !== undefined && (
+                      <span className="text-[10px] text-gray-600 font-mono">{mod.reinstall_charges}×</span>
                     )}
                   </div>
                   <span className="text-green-400 font-mono text-xs">+{mod.boost_applied.toFixed(1)}%</span>

@@ -20,6 +20,7 @@ import { TechPage }        from '@/pages/TechPage'
 import { CombatsPage }     from '@/pages/CombatsPage'
 import { CombatReportPage } from '@/pages/CombatReportPage'
 import { AlliancesPage }   from '@/pages/AlliancesPage'
+import { ModulesPage }     from '@/pages/ModulesPage'
 
 function PlanetRedirect() {
   const { id } = useParams<{ id: string }>()
@@ -76,6 +77,9 @@ export default function App() {
 
           {/* Alliances */}
           <Route path="/alliances"    element={<AlliancesPage />} />
+
+          {/* Modules & Loot */}
+          <Route path="/modules"      element={<ModulesPage />} />
         </Route>
 
         {/* Fallback */}

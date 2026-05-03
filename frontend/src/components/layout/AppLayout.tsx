@@ -28,9 +28,10 @@ const NAV_ITEMS = [
   { to: '/tech',        label: 'Technologies',      short: 'Tech',      Icon: TechIcon },
   { to: '/forge',       label: 'Forge',             short: 'Forge',     Icon: ForgeIcon },
   { to: '/galaxy',      label: 'Galaxie',           short: 'Galaxie',   Icon: GalaxyIcon },
-  { to: '/alliances',   label: 'Alliances',         short: 'Alliances', Icon: AllianceIcon },  // ← Sprint 4
+  { to: '/modules',     label: 'Modules',           short: 'Modules',   Icon: ModuleIcon },
+  { to: '/alliances',   label: 'Alliances',         short: 'Alliances', Icon: AllianceIcon },
   { to: '/ranking',     label: 'Classement',        short: 'Top',       Icon: RankIcon },
-  { to: '/combat',      label: 'Combats',           short: 'Combats',   Icon: CombatIcon },    // ← Sprint 4
+  { to: '/combat',      label: 'Combats',           short: 'Combats',   Icon: CombatIcon },
 ]
 
 export function AppLayout() {
@@ -230,4 +231,7 @@ function AllianceIcon({ size = 20 }: { size?: number }) {
 }
 function CombatIcon({ size = 20 }: { size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M2 2l20 20"/><path d="M9.5 6.5l5 5"/></svg>
+}
+function ModuleIcon({ size = 20 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M17.5 14v7"/></svg>
 }
