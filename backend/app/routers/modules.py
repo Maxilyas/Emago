@@ -92,7 +92,7 @@ async def install_module(
     # Calcul affinité (pour stockage)
     from app.services.ship_stats_service import _MODULE_EFFECT
     effect = _MODULE_EFFECT.get(body.module_type, {})
-    has_affinity = (ship.class_.value == effect.get("affinity_class", ""))
+    has_affinity = (ship.class_ == effect.get("affinity_class", ""))
 
     if mod is None:
         mod = ShipModule(
