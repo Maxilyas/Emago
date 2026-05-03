@@ -4,7 +4,7 @@
  */
 import React from 'react'
 import { Tooltip } from '@/components/ui'
-import { MODULE_CONFIG, TRAIT_CONFIG, type PlayerModule } from '@/types'
+import { MODULE_CONFIG, TRAIT_CONFIG, type PlayerModule, type ModuleDetail } from '@/types'
 
 const STAT_LABEL: Record<string, string> = {
   hull: 'Coque', shield: 'Bouclier', dps: 'DPS',
@@ -131,4 +131,68 @@ export function ModuleHoverCard({ children, mod, shipClass }: {
       {children}
     </Tooltip>
   )
+}
+
+// ─── Hover card pour un module installé (ModuleDetail — valeur exacte) ────────
+export function InstalledModuleHoverCard({ children, mod }: {
+  children: React.ReactNode
+  mod: ModuleDetail
+}) {
+  const cfg = MODULE_CONFIG[mod.type]
+  const stat = cfg?.stat ?? ''
+  const statLabel = STAT_LABEL[stat] ?? stat
+  const lvlStyle = LEVEL_STYLE[mod.level] ?? LEVEL_STYLE[1]
+  const traitCfg = mod.trait ? TRAIT_CONFIG[mod.trait] : null
+
+  const content = (
+    <div className="min-w-[200px] max-w-xs space-y-2.5 text-xs">
+      {/* En-tête */}
+      <div className="flex items-start gap-2.5">
+        <span className="text-xl mt-0.5">{cfg?.icon ?? '🔧'}</span>
+        <div className="flex-1">
+          <div className="font-semibold text-white text-sm">{cfg?.label ?? mod.type}</div>
+          <div className="flex items-center gap-2 mt-1">
+            <span
+              className="px-1.5 py-0.5 rounded font-mono font-semibold text-[10px]"
+              style={{ color: lvlStyle.color, background: lvlStyle.bg }}
+            >
+              Nv.{mod.level}
+            </span>
+            {mod.reinstall_charges !== undefined && (
+              <span style={{ color: (mod.reinstall_charges ?? 0) <= 1 ? '#f87171' : '#6b7280' }}>
+                {mod.reinstall_charges}× charges
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Stat & boost exact (valeur serveur) */}
+      <div className="border-t border-white/10 pt-2 space-y-1">
+        <div className="text-gray-400">Améliore le <span className="text-white font-medium">{statLabel}</span></div>
+        <div className="text-green-400 font-mono font-semibold">+{mod.boost_applied.toFixed(2)}% {statLabel}</div>
+        {mod.affinity_bonus && (
+          <div className="text-green-300 text-[10px]">✓ Affinité active (×1.15 inclus)</div>
+        )}
+      </div>
+
+      {/* Trait */}
+      {traitCfg && (
+        <div className="border-t border-white/10 pt-2">
+          <span className="font-semibold" style={{ color: traitCfg.color }}>{traitCfg.label}</span>
+          <p className="text-gray-400 mt-0.5 leading-relaxed">{traitCfg.description}</p>
+        </div>
+      )}
+
+      {/* Corruption */}
+      {mod.is_corrupted && (
+        <div className="border-t border-red-900/50 pt-2">
+          <div className="font-semibold text-red-400">☠ Module corrompu</div>
+          <p className="text-red-300 mt-0.5">Ce module applique un malus permanent sur une stat du vaisseau</p>
+        </div>
+      )}
+    </div>
+  )
+
+  return <Tooltip content={content}>{children}</Tooltip>
 }

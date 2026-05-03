@@ -4,11 +4,25 @@
  */
 import React from 'react'
 import { StatBar, Badge, TraitBadge } from '@/components/ui'
+import { InstalledModuleHoverCard } from '@/components/ships/ModuleHoverCard'
 import {
-  GRADE_CONFIG, MODULE_CONFIG, DOCTRINE_CONFIG, RESONANCE_CONFIG,
+  GRADE_CONFIG, MODULE_CONFIG, DOCTRINE_CONFIG, RESONANCE_CONFIG, TRAIT_CONFIG,
   type CurrentStats, type Rarity,
 } from '@/types'
 import { rarityColor, xpProgress, fmt } from '@/lib/utils'
+
+const LEVEL_COLORS: Record<number, string> = {
+  1: 'text-gray-400 bg-gray-800',
+  2: 'text-green-400 bg-green-900/30',
+  3: 'text-blue-400 bg-blue-900/30',
+  4: 'text-purple-400 bg-purple-900/30',
+  5: 'text-yellow-400 bg-yellow-900/30',
+}
+
+const STAT_LABEL: Record<string, string> = {
+  hull: 'Coque', shield: 'Bouclier', dps: 'DPS',
+  speed: 'Vitesse', cargo: 'Cargo', stealth: 'Furtivité', support_aura: 'Aura soutien',
+}
 
 interface Props {
   stats: CurrentStats
@@ -214,67 +228,93 @@ export function ShipStatPanel({ stats, baseStats, rarity, combatXp, grade }: Pro
         </div>
       )}
 
-      {/* Modules installés */}
-      {stats.modules.length > 0 && (
-        <div className="panel">
-          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-3">Modules installés</h3>
-          <div className="space-y-2">
-            {stats.modules.map((mod) => {
-              const modCfg = MODULE_CONFIG[mod.type]
-              return (
-                <div key={mod.slot} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-base">{modCfg?.icon ?? '🔧'}</span>
-                    <span className="text-gray-300">{modCfg?.label ?? mod.type}</span>
-                    <span className="text-xs text-gray-500">Nv.{mod.level}</span>
-                    {mod.affinity_bonus && (
-                      <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Affinité</span>
-                    )}
-                    {mod.trait && <TraitBadge trait={mod.trait} />}
-                    {mod.is_corrupted && (
-                      <span className="text-[10px] px-1 py-0.5 rounded text-red-400 bg-red-900/20">☠</span>
-                    )}
-                    {mod.reinstall_charges !== undefined && (
-                      <span className={`text-[10px] font-mono ${mod.reinstall_charges <= 1 ? 'text-red-400' : 'text-gray-600'}`}>
-                        {mod.reinstall_charges}×
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-green-400 font-mono text-xs">+{mod.boost_applied.toFixed(1)}%</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Slots disponibles */}
+      {/* Emplacements — grille unifiée avec hover card */}
       <div className="panel">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-3">Emplacements</h3>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Emplacements</h3>
+          <span className="text-xs text-gray-600">
+            {stats.modules.length}/{stats.slots_total} occupés
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
           {Array.from({ length: stats.slots_total }).map((_, i) => {
-            const isOccupied = stats.modules.some((m) => m.slot === i)
-            const isPremium  = i >= stats.slots_total - stats.slots_premium
-            const installed  = stats.modules.find((m) => m.slot === i)
+            const mod = stats.modules.find((m) => m.slot === i)
+            const isPremium = i >= stats.slots_total - stats.slots_premium
+            const cfg = mod ? MODULE_CONFIG[mod.type] : null
+            const stat = mod ? MODULE_CONFIG[mod.type]?.stat : null
+            const traitCfg = mod?.trait ? TRAIT_CONFIG[mod.trait] : null
+
+            if (mod && cfg) {
+              return (
+                <InstalledModuleHoverCard key={i} mod={mod}>
+                  <div className={`p-2.5 rounded-lg border cursor-default ${
+                    isPremium
+                      ? 'border-yellow-500/30 bg-yellow-900/10'
+                      : 'border-accent-blue/40 bg-blue-900/10'
+                  }`}>
+                    {/* Header slot + level */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] text-gray-500">
+                        #{i + 1}{isPremium && <span className="text-yellow-500"> ✦</span>}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold ${LEVEL_COLORS[mod.level]}`}>
+                        Nv.{mod.level}
+                      </span>
+                    </div>
+                    {/* Module icon + name */}
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-base leading-none">{cfg.icon}</span>
+                      <span className="text-xs font-medium text-gray-200 truncate">{cfg.label}</span>
+                    </div>
+                    {/* Boost */}
+                    <div className="text-[10px] text-green-400 font-mono mb-1">
+                      +{mod.boost_applied.toFixed(1)}% {stat ? STAT_LABEL[stat] : ''}
+                    </div>
+                    {/* Badges */}
+                    <div className="flex flex-wrap gap-1">
+                      {mod.affinity_bonus && (
+                        <span className="text-[10px] text-green-300 bg-green-900/20 px-1 py-0.5 rounded">Aff.</span>
+                      )}
+                      {traitCfg && (
+                        <span
+                          className="text-[10px] px-1 py-0.5 rounded"
+                          style={{ color: traitCfg.color, background: `${traitCfg.color}20` }}
+                        >
+                          {traitCfg.label}
+                        </span>
+                      )}
+                      {mod.is_corrupted && (
+                        <span className="text-[10px] text-red-400">☠</span>
+                      )}
+                      {mod.reinstall_charges !== undefined && mod.reinstall_charges <= 1 && (
+                        <span className="text-[10px] text-red-400 font-mono">{mod.reinstall_charges}×</span>
+                      )}
+                    </div>
+                  </div>
+                </InstalledModuleHoverCard>
+              )
+            }
+
             return (
               <div
                 key={i}
-                className={`h-10 w-10 rounded-lg border flex items-center justify-center text-sm ${
-                  isOccupied
-                    ? 'border-accent-blue bg-blue-900/30'
-                    : isPremium
-                    ? 'border-yellow-500/50 bg-yellow-900/10 border-dashed'
-                    : 'border-surface-border'
+                className={`p-2.5 rounded-lg border ${
+                  isPremium
+                    ? 'border-yellow-500/20 border-dashed bg-yellow-900/5'
+                    : 'border-surface-border/40'
                 }`}
-                title={isPremium ? 'Slot premium (niveaux IV–V)' : `Slot ${i}`}
               >
-                {isOccupied ? MODULE_CONFIG[installed!.type]?.icon ?? '🔧' : isPremium ? '✦' : '·'}
+                <div className="text-[10px] text-gray-600 mb-1.5">
+                  #{i + 1}{isPremium && <span className="text-yellow-700"> ✦</span>}
+                </div>
+                <p className="text-xs text-gray-600 italic">Vide</p>
+                <p className="text-[10px] text-gray-700 mt-0.5">{isPremium ? 'Niv. IV–V' : 'Niv. I–III'}</p>
               </div>
             )
           })}
         </div>
         {stats.slots_premium > 0 && (
-          <p className="text-xs text-yellow-500 mt-2">✦ = slot premium (modules niveaux IV–V)</p>
+          <p className="text-[10px] text-yellow-700 mt-2">✦ Slot premium — modules niveaux IV–V</p>
         )}
       </div>
     </div>
