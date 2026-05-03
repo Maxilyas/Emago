@@ -1,18 +1,10 @@
-/**
- * pages/AlliancesPage.tsx
- * Agent 6 — Développeur Frontend | Sprint 4
- * Design : Agent 4 — UI/UX
- *
- * Page Alliances : liste, recherche, création, détail.
- * Consomme GET /api/v1/alliances, POST /api/v1/alliances, etc.
- */
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { ApiError } from '@/lib/api'
 import { LoadingSpinner, EmptyState, Modal, Badge } from '@/components/ui'
-import { fmt, fmtDate } from '@/lib/utils'
+import { fmt } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -134,9 +126,21 @@ function CreateAllianceModal({ open, onClose }: { open: boolean; onClose: () => 
 
 // ─── Composant détail alliance ────────────────────────────────────────────────
 
-function AllianceDetailPanel({ alliance, onJoin }: { alliance: AllianceDetail; onJoin: (id: string) => void }) {
+function AllianceDetailPanel({
+  alliance,
+  onJoin,
+  onLeave,
+  onDisband,
+}: {
+  alliance: AllianceDetail
+  onJoin: (id: string) => void
+  onLeave: (allianceId: string, playerId: string) => void
+  onDisband: (id: string) => void
+}) {
   const { playerId } = useAuthStore()
-  const isMyAlliance = alliance.members.some(m => m.player_id === playerId)
+  const myMember = alliance.members.find(m => m.player_id === playerId)
+  const isLeader = myMember?.role === 'LEADER'
+  const [confirmDisband, setConfirmDisband] = useState(false)
 
   return (
     <div className="rounded-xl bg-gray-800/50 border border-gray-700 p-5 space-y-4">
@@ -187,6 +191,7 @@ function AllianceDetailPanel({ alliance, onJoin }: { alliance: AllianceDetail; o
                   {ROLE_CONFIG[m.role]?.label}
                 </span>
                 <span className="text-white text-sm">{m.username}</span>
+                {m.player_id === playerId && <span className="text-[10px] text-gray-500">(vous)</span>}
               </div>
               <span className="text-gray-400 text-xs">{fmt(m.score)} pts</span>
             </div>
@@ -194,8 +199,8 @@ function AllianceDetailPanel({ alliance, onJoin }: { alliance: AllianceDetail; o
         </div>
       </div>
 
-      {/* Action rejoindre */}
-      {!isMyAlliance && alliance.members.length < 20 && (
+      {/* Actions */}
+      {!myMember && alliance.members.length < 20 && (
         <button
           onClick={() => onJoin(alliance.id)}
           className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition-colors"
@@ -203,8 +208,44 @@ function AllianceDetailPanel({ alliance, onJoin }: { alliance: AllianceDetail; o
           Rejoindre cette alliance
         </button>
       )}
-      {isMyAlliance && (
-        <div className="text-center text-blue-400 text-sm py-1">✓ Vous êtes membre</div>
+      {myMember && !isLeader && (
+        <button
+          onClick={() => onLeave(alliance.id, playerId!)}
+          className="w-full py-2 bg-red-900/40 hover:bg-red-800/50 border border-red-700/40 text-red-400 hover:text-red-300 text-sm rounded-lg font-medium transition-colors"
+        >
+          Quitter l'alliance
+        </button>
+      )}
+      {isLeader && (
+        <div className="space-y-2">
+          <div className="text-center text-yellow-400 text-xs py-1 font-medium">★ Vous êtes le leader</div>
+          {!confirmDisband ? (
+            <button
+              onClick={() => setConfirmDisband(true)}
+              className="w-full py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-700/40 text-red-500 hover:text-red-400 text-sm rounded-lg font-medium transition-colors"
+            >
+              Dissoudre l'alliance
+            </button>
+          ) : (
+            <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3 space-y-2">
+              <p className="text-red-300 text-xs text-center">Cette action est irréversible. Tous les membres seront exclus.</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmDisband(false)}
+                  className="flex-1 py-1.5 text-gray-400 hover:text-white text-sm rounded-lg border border-gray-700 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => { setConfirmDisband(false); onDisband(alliance.id) }}
+                  className="flex-1 py-1.5 bg-red-700 hover:bg-red-600 text-white text-sm rounded-lg font-medium transition-colors"
+                >
+                  Confirmer
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
@@ -217,6 +258,9 @@ export function AlliancesPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
   const qc = useQueryClient()
+  const { playerId } = useAuthStore()
+
+  const { username } = useAuthStore()
 
   const { data: alliances, isLoading } = useQuery<AllianceSummary[]>({
     queryKey: ['alliances'],
@@ -224,14 +268,48 @@ export function AlliancesPage() {
     refetchInterval: 60_000,
   })
 
+  // Detect if current user leads any alliance (covers the most common case).
+  // For non-leader membership, amMember from selected detail takes over.
+  const myLeadedAlliance = (alliances || []).find(a => a.leader_username === username)
+  const amMember = selected?.members.some(m => m.player_id === playerId)
+    ?? (myLeadedAlliance != null)
+
+  // Auto-select own alliance on first load if we lead one and nothing is selected
+  React.useEffect(() => {
+    if (myLeadedAlliance && !selected) {
+      loadDetail(myLeadedAlliance.id)
+    }
+  }, [myLeadedAlliance?.id])
+
   const joinMutation = useMutation({
     mutationFn: (allianceId: string) => api.post(`/alliances/${allianceId}/join`).then(r => r.json()),
     onSuccess: (data) => {
       toast.success(`Vous avez rejoint [${data.tag}] ${data.alliance_name} !`)
       qc.invalidateQueries({ queryKey: ['alliances'] })
-      if (selected) setSelected({ ...selected, member_count: selected.member_count + 1 })
+      if (selected) loadDetail(selected.id)
     },
     onError: (e: ApiError) => toast.error(e.detail || 'Impossible de rejoindre'),
+  })
+
+  const leaveMutation = useMutation({
+    mutationFn: ({ allianceId, pid }: { allianceId: string; pid: string }) =>
+      api.delete(`/alliances/${allianceId}/members/${pid}`),
+    onSuccess: () => {
+      toast.success('Vous avez quitté l\'alliance.')
+      qc.invalidateQueries({ queryKey: ['alliances'] })
+      setSelected(null)
+    },
+    onError: (e: ApiError) => toast.error(e.detail || 'Impossible de quitter'),
+  })
+
+  const disbandMutation = useMutation({
+    mutationFn: (allianceId: string) => api.delete(`/alliances/${allianceId}`),
+    onSuccess: () => {
+      toast.success('Alliance dissoute.')
+      qc.invalidateQueries({ queryKey: ['alliances'] })
+      setSelected(null)
+    },
+    onError: (e: ApiError) => toast.error(e.detail || 'Impossible de dissoudre'),
   })
 
   const loadDetail = async (id: string) => {
@@ -249,12 +327,14 @@ export function AlliancesPage() {
       {/* En-tête */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-white font-display">Alliances</h1>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition-colors"
-        >
-          + Créer une alliance
-        </button>
+        {!amMember && (
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg font-medium transition-colors"
+          >
+            + Créer une alliance
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -270,7 +350,7 @@ export function AlliancesPage() {
           {isLoading ? (
             <LoadingSpinner />
           ) : filtered.length === 0 ? (
-            <EmptyState title="Aucune alliance" description="Soyez le premier à en créer une !" />
+            <EmptyState title="Aucune alliance" message="Soyez le premier à en créer une !" />
           ) : (
             <div className="space-y-2">
               {filtered.map(a => (
@@ -298,6 +378,16 @@ export function AlliancesPage() {
               ))}
             </div>
           )}
+
+          {/* Bouton créer si pas dans une alliance et aucune dans la liste filtrée */}
+          {!amMember && !isLoading && (
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="w-full py-2.5 border border-dashed border-gray-600 hover:border-blue-500 text-gray-500 hover:text-blue-400 text-sm rounded-xl transition-colors"
+            >
+              + Fonder une nouvelle alliance
+            </button>
+          )}
         </div>
 
         {/* Détail */}
@@ -306,6 +396,8 @@ export function AlliancesPage() {
             <AllianceDetailPanel
               alliance={selected}
               onJoin={(id) => joinMutation.mutate(id)}
+              onLeave={(allianceId, pid) => leaveMutation.mutate({ allianceId, pid })}
+              onDisband={(id) => disbandMutation.mutate(id)}
             />
           ) : (
             <div className="rounded-xl bg-gray-800/30 border border-gray-700/50 p-8 text-center">

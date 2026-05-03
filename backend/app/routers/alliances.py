@@ -5,6 +5,7 @@ Agent 5 — Développeur Backend | Sprint 4
 GET    /alliances                    — liste des alliances (top 50 par score)
 GET    /alliances/{id}               — détail alliance + membres
 POST   /alliances                    — créer une alliance
+DELETE /alliances/{id}               — dissoudre l'alliance (leader)
 POST   /alliances/{id}/join          — postuler à une alliance
 POST   /alliances/{id}/members/{pid}/accept  — accepter une candidature
 DELETE /alliances/{id}/members/{pid}         — expulser un membre / quitter
@@ -394,6 +395,24 @@ async def remove_member(
         tp.alliance_id = None
         db.add(tp)
 
+    await db.commit()
+
+
+@router.delete("/{alliance_id}", status_code=204)
+async def disband_alliance(
+    alliance_id: uuid.UUID,
+    player: CurrentPlayer,
+    db: DbDep,
+):
+    """Dissoudre l'alliance — leader uniquement.
+    DB cascade supprime alliance_members et met players.alliance_id à NULL."""
+    await _require_role(player.id, alliance_id, db, AllianceRole.LEADER)
+
+    alliance = await db.get(Alliance, alliance_id)
+    if not alliance:
+        raise HTTPException(status_code=404, detail="Alliance introuvable.")
+
+    await db.delete(alliance)
     await db.commit()
 
 
