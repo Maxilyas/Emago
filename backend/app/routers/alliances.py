@@ -82,6 +82,15 @@ class CreateAllianceRequest(BaseModel):
     tag:  str = Field(..., min_length=2, max_length=5, pattern="^[A-Z0-9]+$")
     description: str | None = Field(None, max_length=500)
 
+class UpdateAllianceRequest(BaseModel):
+    description: str | None = Field(None, max_length=500)
+
+class UpdateRoleRequest(BaseModel):
+    role: str = Field(..., pattern="^(LEADER|OFFICER|MEMBER)$")
+
+class InviteRequest(BaseModel):
+    username: str
+
 class DeclareWarRequest(BaseModel):
     target_alliance_id: str
 
@@ -414,6 +423,114 @@ async def disband_alliance(
 
     await db.delete(alliance)
     await db.commit()
+
+
+@router.patch("/{alliance_id}", status_code=200)
+async def update_alliance(
+    alliance_id: uuid.UUID,
+    body: UpdateAllianceRequest,
+    player: CurrentPlayer,
+    db: DbDep,
+) -> dict:
+    """Modifier la description de l'alliance (leader ou officier)."""
+    await _require_role(player.id, alliance_id, db, AllianceRole.OFFICER)
+
+    alliance = await db.get(Alliance, alliance_id)
+    if not alliance:
+        raise HTTPException(status_code=404, detail="Alliance introuvable.")
+
+    alliance.description = body.description
+    db.add(alliance)
+    await db.commit()
+    return {"updated": True}
+
+
+@router.patch("/{alliance_id}/members/{target_player_id}/role", status_code=200)
+async def update_member_role(
+    alliance_id: uuid.UUID,
+    target_player_id: uuid.UUID,
+    body: UpdateRoleRequest,
+    player: CurrentPlayer,
+    db: DbDep,
+) -> dict:
+    """Modifier le grade d'un membre (leader uniquement).
+    Le leader ne peut pas changer son propre grade."""
+    await _require_role(player.id, alliance_id, db, AllianceRole.LEADER)
+
+    if target_player_id == player.id:
+        raise HTTPException(status_code=400, detail="Impossible de modifier votre propre grade.")
+
+    result = await db.execute(
+        select(AllianceMember).where(
+            AllianceMember.player_id == target_player_id,
+            AllianceMember.alliance_id == alliance_id,
+        )
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Membre introuvable.")
+
+    if body.role == AllianceRole.LEADER:
+        # Transfert de leadership : rétrogader l'ancien leader
+        current_leader = await _get_member(player.id, db)
+        if current_leader:
+            current_leader.role = AllianceRole.OFFICER
+            db.add(current_leader)
+        # Mettre à jour leader_id sur l'alliance
+        alliance = await db.get(Alliance, alliance_id)
+        if alliance:
+            alliance.leader_id = target_player_id
+            db.add(alliance)
+
+    member.role = body.role
+    db.add(member)
+    await db.commit()
+    return {"updated": True, "new_role": body.role}
+
+
+@router.post("/{alliance_id}/invite", status_code=200)
+async def invite_member(
+    alliance_id: uuid.UUID,
+    body: InviteRequest,
+    player: CurrentPlayer,
+    db: DbDep,
+) -> dict:
+    """Inviter un joueur par son nom (leader ou officier).
+    Ajoute directement le joueur comme MEMBER sans candidature."""
+    await _require_role(player.id, alliance_id, db, AllianceRole.OFFICER)
+
+    # Vérifier la capacité
+    cnt = await db.execute(
+        select(func.count(AllianceMember.id)).where(AllianceMember.alliance_id == alliance_id)
+    )
+    if (cnt.scalar() or 0) >= _MAX_MEMBERS:
+        raise HTTPException(status_code=409, detail=f"Alliance pleine ({_MAX_MEMBERS} membres max).")
+
+    # Trouver le joueur cible
+    target_r = await db.execute(select(Player).where(Player.username == body.username))
+    target = target_r.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail=f"Joueur '{body.username}' introuvable.")
+
+    if target.id == player.id:
+        raise HTTPException(status_code=400, detail="Vous êtes déjà dans l'alliance.")
+
+    # Vérifier qu'il n'est pas déjà dans une alliance
+    existing = await _get_member(target.id, db)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"{body.username} est déjà membre d'une alliance.")
+
+    member = AllianceMember(
+        alliance_id=alliance_id,
+        player_id=target.id,
+        role=AllianceRole.MEMBER,
+    )
+    db.add(member)
+    target.alliance_id = alliance_id
+    db.add(target)
+    await db.commit()
+
+    return {"added": True, "username": target.username}
 
 
 @router.post("/{alliance_id}/wars", status_code=201)

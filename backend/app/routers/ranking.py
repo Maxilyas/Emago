@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.core.deps import CurrentPlayer, DbDep
-from app.models.models import Player
+from app.models.models import Alliance, Player
 
 router = APIRouter(prefix="/ranking", tags=["ranking"])
 
@@ -38,11 +38,12 @@ async def get_ranking(db: DbDep, limit: int = 100) -> list[RankingEntry]:
     Endpoint public — pas d'authentification requise.
     """
     result = await db.execute(
-        select(Player)
+        select(Player, Alliance.tag)
+        .outerjoin(Alliance, Alliance.id == Player.alliance_id)
         .order_by(Player.score.desc())
         .limit(min(limit, 500))
     )
-    players = result.scalars().all()
+    rows = result.all()
 
     return [
         RankingEntry(
@@ -50,9 +51,9 @@ async def get_ranking(db: DbDep, limit: int = 100) -> list[RankingEntry]:
             player_id=str(p.id),
             username=p.username,
             score=p.score,
-            alliance_tag=None,  # TODO : charger depuis alliance relation
+            alliance_tag=tag,
         )
-        for i, p in enumerate(players)
+        for i, (p, tag) in enumerate(rows)
     ]
 
 
