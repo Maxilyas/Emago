@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { modulesApi } from '@/api/modules'
 import { planetsApi } from '@/api/index'
 import { Modal, LoadingSpinner, Tabs, TraitBadge, MemoryBadge } from '@/components/ui'
+import { ModuleHoverCard } from '@/components/ships/ModuleHoverCard'
 import { ApiError } from '@/lib/api'
 import {
   MODULE_CONFIG, LOOT_CRATE_CONFIG,
@@ -174,7 +175,9 @@ function InventoryTab() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {filtered.map((mod) => (
-            <ModuleBadge key={mod.id} mod={mod} />
+            <ModuleHoverCard key={mod.id} mod={mod}>
+              <ModuleBadge mod={mod} />
+            </ModuleHoverCard>
           ))}
         </div>
       )}
@@ -400,12 +403,13 @@ function CraftTab() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 {mods.map((mod) => (
-                  <ModuleBadge
-                    key={mod.id}
-                    mod={mod}
-                    selected={selected.includes(mod.id)}
-                    onClick={canCraft ? () => toggle(mod.id) : undefined}
-                  />
+                  <ModuleHoverCard key={mod.id} mod={mod}>
+                    <ModuleBadge
+                      mod={mod}
+                      selected={selected.includes(mod.id)}
+                      onClick={canCraft ? () => toggle(mod.id) : undefined}
+                    />
+                  </ModuleHoverCard>
                 ))}
               </div>
             </div>
@@ -453,7 +457,9 @@ function RevealModal({ result, onClose }: { result: LootCrateOpenResult; onClose
         <div>
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Module obtenu</p>
           <div className="panel border-accent-blue/40" style={{ boxShadow: '0 0 20px rgba(45,125,210,0.2)' }}>
-            <ModuleBadge mod={result.module} />
+            <ModuleHoverCard mod={result.module}>
+              <ModuleBadge mod={result.module} />
+            </ModuleHoverCard>
           </div>
         </div>
       )}

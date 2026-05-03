@@ -147,7 +147,7 @@ export function Tooltip({ children, content, className }: {
   className?: string
 }) {
   return (
-    <div className={cn('relative inline-block group', className)}>
+    <div className={cn('relative group', className)}>
       {children}
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 pointer-events-none w-max max-w-xs">
         <div className="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-200 shadow-2xl">
@@ -165,7 +165,7 @@ export function TraitBadge({ trait, size = 'sm' }: { trait: string; size?: 'xs' 
   if (!cfg) return <span className="text-[10px] text-gray-500">{trait}</span>
   const textSize = size === 'xs' ? 'text-[10px]' : 'text-[10px]'
   return (
-    <Tooltip content={cfg.description}>
+    <Tooltip content={cfg.description} className="inline-block">
       <span
         className={cn(textSize, 'px-1.5 py-0.5 rounded-full font-medium cursor-help inline-block border')}
         style={{ color: cfg.color, background: `${cfg.color}15`, borderColor: `${cfg.color}40` }}
@@ -179,7 +179,7 @@ export function TraitBadge({ trait, size = 'sm' }: { trait: string; size?: 'xs' 
 // ─── MemoryBadge ──────────────────────────────────────────────────────────────
 export function MemoryBadge({ name }: { name: string }) {
   return (
-    <Tooltip content={`Mémoire d'origine — ce module a été récupéré lors de : "${name}"`}>
+    <Tooltip content={`Mémoire d'origine — ce module a été récupéré lors de : "${name}"`} className="inline-block">
       <span className="text-[10px] px-1.5 py-0.5 rounded-full text-purple-400 bg-purple-900/20 border border-purple-500/30 cursor-help inline-block">
         📜 {name}
       </span>

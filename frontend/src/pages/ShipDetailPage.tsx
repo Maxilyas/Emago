@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { shipsApi } from '@/api/ships'
 import { modulesApi } from '@/api/modules'
 import { ShipStatPanel } from '@/components/ships/ShipStatPanel'
+import { ModuleHoverCard, estimateBoostRate } from '@/components/ships/ModuleHoverCard'
 import { Modal, LoadingSpinner, Tabs, TraitBadge, MemoryBadge } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import {
@@ -292,24 +293,6 @@ function ModuleManager({ ship, onInstall, onRemove }: {
   )
 }
 
-// ─── Estimation du boost côté client (approximation) ─────────────────────────
-const _MOD_BOOST_RATE: Record<number, number> = { 1: 0.08, 2: 0.14, 3: 0.22, 4: 0.32, 5: 0.44 }
-const _TRAIT_MULT: Record<string, number> = {
-  battle_hardened: 1.10, overclocked: 1.15, military_grade: 1.12, lightweight: 1.05,
-}
-const _AFFINITY_CLASS: Partial<Record<ModuleType, string>> = {
-  PROPELLER: 'EXPLORATION', ARMOR: 'DEFENSE', CANNON: 'ATTACK',
-  EMITTER: 'SUPPORT', SHIELD: 'DEFENSE', CARGO: 'EXPLORATION',
-}
-
-function estimateBoostRate(mod: PlayerModule, shipClass: string): number {
-  let rate = _MOD_BOOST_RATE[mod.level] ?? 0
-  if (mod.trait && _TRAIT_MULT[mod.trait]) rate *= _TRAIT_MULT[mod.trait]
-  if (mod.bonus_trait && _TRAIT_MULT[mod.bonus_trait]) rate *= _TRAIT_MULT[mod.bonus_trait]
-  if (_AFFINITY_CLASS[mod.module_type] === shipClass) rate *= 1.15
-  return rate
-}
-
 // ─── Modal installation depuis l'inventaire ───────────────────────────────────
 function InstallModuleModal({ open, slot, shipId, isPremiumSlot, onClose, onInstalled }: {
   open: boolean; slot: number; shipId: string; isPremiumSlot: boolean
@@ -414,42 +397,42 @@ function InstallModuleModal({ open, slot, shipId, isPremiumSlot, onClose, onInst
                 : null
 
               return (
-                <button
-                  key={mod.id}
-                  onClick={() => setSelected(isSelected ? null : mod.id)}
-                  className={`w-full text-left p-3 rounded-lg border transition-all ${
-                    isSelected ? 'border-accent-blue bg-accent-blue/10' : 'border-surface-border hover:border-gray-500'
-                  }`}
-                >
-                  {/* Ligne principale */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-base">{cfg?.icon ?? '🔧'}</span>
-                      <span className="text-sm font-medium text-gray-100">{cfg?.label ?? mod.module_type}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold font-mono ${LEVEL_COLORS[mod.level]}`}>
-                        Nv.{mod.level}
+                <ModuleHoverCard key={mod.id} mod={mod} shipClass={shipData?.ship_class}>
+                  <button
+                    onClick={() => setSelected(isSelected ? null : mod.id)}
+                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                      isSelected ? 'border-accent-blue bg-accent-blue/10' : 'border-surface-border hover:border-gray-500'
+                    }`}
+                  >
+                    {/* Ligne principale */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base">{cfg?.icon ?? '🔧'}</span>
+                        <span className="text-sm font-medium text-gray-100">{cfg?.label ?? mod.module_type}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold font-mono ${LEVEL_COLORS[mod.level]}`}>
+                          Nv.{mod.level}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-mono shrink-0 ${mod.reinstall_charges <= 1 ? 'text-red-400' : 'text-gray-500'}`}>
+                        {mod.reinstall_charges}× charges
                       </span>
                     </div>
-                    <span className={`text-[10px] font-mono shrink-0 ${mod.reinstall_charges <= 1 ? 'text-red-400' : 'text-gray-500'}`}>
-                      {mod.reinstall_charges}× charges
-                    </span>
-                  </div>
 
-                  {/* Ligne effet */}
-                  <div className="mt-1 flex items-center gap-2 flex-wrap">
-                    {boostPct !== null && (
-                      <span className="text-xs text-green-400 font-mono">~+{boostPct}% {STAT_LABEL[stat] ?? stat}</span>
-                    )}
-                    {mod.trait && <TraitBadge trait={mod.trait} />}
-                    {mod.bonus_trait && <TraitBadge trait={mod.bonus_trait} />}
-                    {mod.is_corrupted && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded text-red-400 bg-red-900/20">
-                        ☠ Corrompu — {mod.corruption_malus_stat ?? '?'} pénalisé
-                      </span>
-                    )}
-                    {mod.memory_ship_name && <MemoryBadge name={mod.memory_ship_name} />}
-                  </div>
-                </button>
+                    {/* Ligne effet */}
+                    <div className="mt-1 flex items-center gap-2 flex-wrap">
+                      {boostPct !== null && (
+                        <span className="text-xs text-green-400 font-mono">~+{boostPct}% {STAT_LABEL[stat] ?? stat}</span>
+                      )}
+                      {mod.trait && <TraitBadge trait={mod.trait} />}
+                      {mod.bonus_trait && <TraitBadge trait={mod.bonus_trait} />}
+                      {mod.is_corrupted && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded text-red-400 bg-red-900/20">
+                          ☠ Corrompu
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                </ModuleHoverCard>
               )
             })
           )}
