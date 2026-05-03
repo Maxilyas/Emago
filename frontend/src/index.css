@@ -133,7 +133,7 @@
 
   /* ── Stat bars ───────────────────────────────────────────────────────────── */
   .stat-bar {
-    @apply h-1.5 rounded-full overflow-hidden;
+    @apply h-1.5 rounded-full overflow-hidden relative;
     background: rgba(45, 58, 80, 0.5);
   }
   .stat-bar-fill {

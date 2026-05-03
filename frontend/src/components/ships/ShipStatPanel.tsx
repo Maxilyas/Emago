@@ -88,6 +88,7 @@ export function ShipStatPanel({ stats, baseStats, rarity, combatXp, grade }: Pro
               max={STAT_MAX[key] ?? 100}
               color={cfg.color}
               capped={isCapped}
+              base={base !== undefined && base > 0 ? Math.round(base) : undefined}
             />
           )
         })}

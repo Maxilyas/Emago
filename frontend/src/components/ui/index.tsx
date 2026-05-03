@@ -27,22 +27,37 @@ export function Badge({ children, variant = 'default', className }: BadgeProps) 
 }
 
 // ─── StatBar ──────────────────────────────────────────────────────────────────
-interface StatBarProps { label: string; value: number; max: number; color?: string; capped?: boolean }
-export function StatBar({ label, value, max, color = '#2d7dd2', capped = false }: StatBarProps) {
+interface StatBarProps {
+  label: string; value: number; max: number; color?: string; capped?: boolean
+  base?: number  // valeur sans modules — affiche le delta si fourni
+}
+export function StatBar({ label, value, max, color = '#2d7dd2', capped = false, base }: StatBarProps) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0
+  const basePct = base !== undefined && max > 0 ? Math.min(100, (base / max) * 100) : null
+  const delta = base !== undefined ? Math.round(value - base) : 0
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs text-gray-400">
         <span className={cn(capped && 'text-orange-400 flex items-center gap-1')}>
           {label}{capped && <span title="Plafond +150% atteint">🔒</span>}
         </span>
-        <span className="text-white font-mono">{value.toLocaleString('fr-FR')}</span>
+        <div className="flex items-center gap-1.5">
+          {delta > 0 && <span className="text-[10px] text-green-400 font-mono">+{delta.toLocaleString('fr-FR')}</span>}
+          {delta < 0 && <span className="text-[10px] text-red-400 font-mono">{delta.toLocaleString('fr-FR')}</span>}
+          <span className="text-white font-mono">{value.toLocaleString('fr-FR')}</span>
+        </div>
       </div>
-      <div className="stat-bar">
+      <div className="stat-bar relative">
         <div
           className="stat-bar-fill"
           style={{ width: `${pct}%`, backgroundColor: capped ? '#f97316' : color }}
         />
+        {basePct !== null && delta > 0 && (
+          <div
+            className="absolute top-0 h-full w-px bg-white/40"
+            style={{ left: `${basePct}%` }}
+          />
+        )}
       </div>
     </div>
   )
