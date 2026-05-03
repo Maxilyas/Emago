@@ -17,7 +17,8 @@ backend/
 │       ├── 0004_alliances.py
 │       ├── 0005_expedition_logs_table.py
 │       ├── 0006_ship_rpg_fields.py
-│       └── 0007_combat_logs_gin_index.py
+│       ├── 0007_combat_logs_gin_index.py
+│       └── 0008_ship_status_scrapped.py
 ├── app/
 │   ├── main.py                    # FastAPI app + lifespan + CORS + routers + scheduler
 │   ├── core/
@@ -193,7 +194,7 @@ Fonctions :
   - SELECT FOR UPDATE 2 ships ORDER BY id (anti-deadlock).
   - 404 si manquants, 403 si owner ≠, 422 si type/rareté différents ou LEGENDARY, 409 si statut ≠ DOCKED ou pas planet_id.
   - SELECT FOR UPDATE planète, déduit ressources × 3.
-  - Statut 2 parents → IN_FORGE, INSERT ForgeQueue (completed_at = now + 8h).
+  - Statut 2 parents → IN_FORGE, INSERT ForgeQueue (completed_at = now + 8h, **cost_metal/crystal/deuterium** valorisés depuis `forge_cost`).
   - `_store_forge_status(0%, player_id=player_id)` Redis (inclut le player_id dans le payload), invalidate_hangar_cache.
 - `finalize_forge(db, forge_entry)` :
   - SELECT FOR UPDATE parents.
@@ -204,7 +205,7 @@ Fonctions :
   - `transferred_xp = int(max(xp_a, xp_b) × 0.30)`.
   - INSERT new Ship (status DOCKED, trait, name, is_drift).
   - Si drift : INSERT ShipScar tag `"born_in_drift"`.
-  - Parents → status `SCRAPPED`.
+  - Parents → status `ShipStatus.SCRAPPED`.
   - Invalidate cache parents (sinon stale stats).
   - WS `forge.complete` channel `player:{pid}` avec base_stats + slots + trait + name + is_drift.
 - `run_forge_tick(db)` (job APScheduler 60 s) : SELECT ForgeQueue WHERE completed_at <= now AND result_ship_id IS NULL → `finalize_forge` puis commit.
@@ -537,6 +538,7 @@ Couvre : RNG rarity (300 tirages valid, distribution COMMON 0.45-0.65), generate
 | Tests d'intégration alliances | Haute | `tests/routers/` |
 | Tests d'intégration WebSocket | Haute | `tests/` |
 | ~~Index JSONB pour `combat_logs.attacker_ships_snapshot` participation~~ | ~~Moyenne~~ | ✅ FAIT — migration 0007, GIN jsonb_path_ops sur attacker et defender snapshot |
+| ~~ShipStatus.SCRAPPED manquant + ForgeQueue sans cost_metal/crystal/deuterium~~ | ~~Haute~~ | ✅ FAIT — migration 0008 (index partiel ships actifs), enum complété, ForgeQueue valorisé |
 | Charger `alliance_tag` dans ranking | Basse | `ranking.py` ligne 53 |
 | Implémenter pool `EXPEDITION_SCAR_TAGS` (au lieu de `tag_id=1`) | Basse | `expedition_service.py` |
 | Implémenter `module_drop` persistance (table inventory) | Haute | `expedition_service.py` |

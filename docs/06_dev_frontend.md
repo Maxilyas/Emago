@@ -221,7 +221,7 @@ Tabs Stats / Modules / Cicatrices. `ShipStatPanel` affiche stats serveur (jamais
 
 ### `ForgePage.tsx` (`/forge`)
 
-Tabs Forge / Historique. Forge : 2 panels A/B sélection, vaisseaux éligibles `DOCKED && rarity !== 'LEGENDARY'`, filtre compatibilité `same type && same rarity`. Aperçu animé : badge rareté ×2 → flèche → badge rareté suivante (animate-pulse + glow). Bullet "✓ meilleures stats / 30% XP / 8h" + coût `FORGE_COSTS`. Mutation `forgeApi.start` avec spinner.
+Tabs Forge / Historique. `forgeHistory` toujours fetchée (refetch 30 s) — plus limitée à l'onglet Historique. Onglet **Nouvelle forge** : bandeau "En cours" (`ForgeProgress` × N) si forges actives, puis sélection A/B, filtre compatibilité `same type && same rarity`, aperçu animé rareté ×2 → suivante + coût `FORGE_COSTS`. Onglet **Historique** : forges actives + terminées. Mutation `forgeApi.start` avec spinner.
 
 ### `GalaxyPage.tsx` (`/galaxy`)
 
@@ -285,7 +285,7 @@ Rapport détaillé d'un combat. Réutilise le composant `CombatReport` de la lay
 
 ### `forge/`
 
-- **`ForgeProgress.tsx`** : barre + countdown via `useCountdown(eta_seconds)`. Badge `is_drift` si dérivée.
+- **`ForgeProgress.tsx`** : barre + countdown calculé depuis `completed_at` (timestamp absolu, immune au refresh) — `eta_seconds` du serveur est figé à la création et non mis à jour entre les ticks. Progress % : `(8h - remaining) / 8h`. `isComplete` : `result_ship_id` présent ou `remaining ≤ 0`.
 
 ### `layout/`
 
