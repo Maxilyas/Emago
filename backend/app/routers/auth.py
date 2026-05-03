@@ -69,6 +69,8 @@ async def register(request: Request, body: RegisterRequest, db: DbDep) -> TokenR
     return TokenResponse(
         access_token=create_token(str(player.id), "access"),
         refresh_token=refresh_tok,
+        player_id=str(player.id),
+        username=player.username,
     )
 
 
@@ -97,6 +99,8 @@ async def login(request: Request, body: LoginRequest, db: DbDep) -> TokenRespons
     return TokenResponse(
         access_token=create_token(str(player.id), "access"),
         refresh_token=refresh_tok,
+        player_id=str(player.id),
+        username=player.username,
     )
 
 
@@ -135,4 +139,6 @@ async def refresh(request: Request, body: RefreshRequest, db: DbDep) -> TokenRes
     return TokenResponse(
         access_token=create_token(player_id, "access"),
         refresh_token=refresh_tok,
+        player_id=str(player.id),
+        username=player.username,
     )

@@ -36,6 +36,8 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    player_id: str
+    username: str
 
 
 class RefreshRequest(BaseModel):

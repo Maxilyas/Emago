@@ -17,13 +17,17 @@ export const rankingApi = {
   me:    ()             => api.get<{ rank: number; player_id: string; username: string; score: number }>('/ranking/me'),
 }
 
+interface TokenResponse {
+  access_token: string
+  refresh_token: string
+  token_type: string
+  player_id: string
+  username: string
+}
+
 export const authApi = {
   register: (username: string, email: string, password: string) =>
-    api.post<{ access_token: string; refresh_token: string; token_type: string }>(
-      '/auth/register', { username, email, password }
-    ),
+    api.post<TokenResponse>('/auth/register', { username, email, password }),
   login: (email: string, password: string) =>
-    api.post<{ access_token: string; refresh_token: string; token_type: string }>(
-      '/auth/login', { email, password }
-    ),
+    api.post<TokenResponse>('/auth/login', { email, password }),
 }

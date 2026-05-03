@@ -33,7 +33,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: () => !!get().accessToken,
 
       initialize: async () => {
-        const { refreshToken, setTokens, logout } = get()
+        const { refreshToken, setTokens, setPlayerId, logout } = get()
         if (!refreshToken) return
         try {
           const res = await fetch('/api/v1/auth/refresh', {
@@ -44,6 +44,7 @@ export const useAuthStore = create<AuthState>()(
           if (!res.ok) { logout(); return }
           const data = await res.json()
           setTokens(data.access_token, data.refresh_token)
+          if (data.player_id) setPlayerId(data.player_id, data.username)
         } catch {
           logout()
         }

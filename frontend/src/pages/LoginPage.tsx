@@ -17,7 +17,7 @@ const STARS = Array.from({ length: 80 }, (_, i) => ({
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { setTokens } = useAuthStore()
+  const { setTokens, setPlayerId } = useAuthStore()
   const [tab, setTab]           = useState<'login' | 'register'>('login')
   const [loading, setLoading]   = useState(false)
   const [email, setEmail]       = useState('')
@@ -35,6 +35,7 @@ export function LoginPage() {
         ? await authApi.login(email, password)
         : await authApi.register(username, email, password)
       setTokens(res.access_token, res.refresh_token)
+      setPlayerId(res.player_id, res.username)
       navigate('/dashboard')
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : 'Erreur de connexion')
