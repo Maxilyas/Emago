@@ -183,9 +183,9 @@ Scrollbar custom : 4 px, track transparent, thumb `rgba(45,125,210,0.4)` rounded
 | Écran | Route | Statut design | Statut implémentation |
 |---|---|---|---|
 | Login / Register | `/login` | FAIT | FAIT (dual-form, fond étoilé animé) |
-| Dashboard | `/dashboard` | FAIT | FAIT (resources live, fleet active, forge en cours, daily) |
-| Planète (détail) | `/planets/:id` | FAIT | FAIT (interpolation ressources, queue construction) |
-| Bâtiments | `/buildings` | FAIT | FAIT (BuildingTooltip enrichi) |
+| Dashboard | `/dashboard` | FAIT | FAIT — enrichi : Empire Resources, Recherche, Expéditions, Dernier combat |
+| Planète (détail) | `/planets/:id` | — | REDIRIGE → `/buildings?planet=:id` (rétro-compat) |
+| Bâtiments | `/buildings` | FAIT | FAIT — page unique gestion planétaire, query param `?planet`, sync GlobalResourceBar |
 | Hangar | `/hangar` | FAIT | FAIT (filtres rareté/classe/status, modal build) |
 | Détail vaisseau | `/hangar/:id` | FAIT | FAIT (stats, modules, pedigree, scars, missions, traits) |
 | Forge | `/forge` | FAIT | FAIT (ForgeProgress + countdown + Dérive badge) |
@@ -229,7 +229,8 @@ Scrollbar custom : 4 px, track transparent, thumb `rgba(45,125,210,0.4)` rounded
 - **`<ForgeProgress>`** : barre de progression + countdown via `useCountdown(eta_seconds)`. Marque `is_drift` si dérivée.
 
 ### Layout
-- **`<AppLayout>`** : navigation principale, sidebar, monte 2 overlays globaux (`CombatReport`, `SpectreAwakening`), active `useGameSocket()`.
+- **`<AppLayout>`** : navigation principale, sidebar, monte 2 overlays globaux (`CombatReport`, `SpectreAwakening`), active `useGameSocket()`. Monte `<GlobalResourceBar>` en bandeau persistant entre le header et le contenu principal.
+- **`<GlobalResourceBar>`** : barre persistante sur toutes les pages. Sélecteur planète (toutes les planètes du joueur), ressources interpolées temps réel, alerte énergie. Lit/écrit `activePlanetId` dans gameStore.
 - **`<NotificationPanel>`** : panneau coulissant des notifications WS, point rouge sur cloche s'il y a des unread.
 
 ### UI library (`components/ui/index.tsx`)

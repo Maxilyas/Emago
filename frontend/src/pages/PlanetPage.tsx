@@ -15,6 +15,7 @@ import { api } from '@/lib/api'
 import { ApiError } from '@/lib/api'
 import { LoadingSpinner, EmptyState } from '@/components/ui'
 import { fmt, fmtShort, fmtCountdown, clamp } from '@/lib/utils'
+import { useGameStore } from '@/stores/gameStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -251,6 +252,10 @@ export function PlanetPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { setActivePlanetId } = useGameStore()
+
+  // Synchronise la planète active avec la barre de ressources globale
+  useEffect(() => { if (id) setActivePlanetId(id) }, [id, setActivePlanetId])
 
   const { data: planet, isLoading } = useQuery({
     queryKey: ['planet', id],

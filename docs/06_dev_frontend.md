@@ -70,7 +70,7 @@ const queryClient = new QueryClient({
 /                         → Navigate → /dashboard
 [RequireAuth + AppLayout] :
   /dashboard              → DashboardPage
-  /planets/:id            → PlanetPage
+  /planets/:id            → PlanetRedirect → /buildings?planet=:id  (rétro-compatibilité)
   /buildings              → BuildingsPage
   /hangar                 → HangarPage
   /hangar/:id             → ShipDetailPage
@@ -113,21 +113,24 @@ interface AuthState {
 
 `initialize()` est appelé une seule fois dans `App.tsx` via `useEffect([], [])`. Elle POST `/api/v1/auth/refresh` avec le refresh token persisté pour réhydrater l'access token après un rechargement de page. Si le refresh échoue (token expiré ou révoqué) → `logout()` automatique.
 
-### `gameStore.ts` (v1.1)
+### `gameStore.ts` (v1.2)
 
 ```ts
 interface GameState {
   wsConnected: boolean;
+  activePlanetId: string | null;                  // planète sélectionnée pour GlobalResourceBar
   activeResources: { metal, crystal, deuterium, planetId, updatedAt };
   pendingCombatResult: PendingCombatResult | null;
   spectreData: SpectreAwakeningData | null;       // overlay Grade 5
   pendingForgeResult: PendingForgeResult | null;  // toast enrichi
   notifications: Notification[];                   // max 50, prepend
-  // actions...
+  // actions : setActivePlanetId, setActiveResources, ...
 }
 ```
 
 Architecture : les overlays globaux (`CombatReport`, `SpectreAwakening`) sont montés dans `AppLayout`. Le store sert de canal de communication entre `useWsEventHandlers` (NotificationPanel) et l'AppLayout.
+
+`activePlanetId` est mis à jour par `BuildingsPage` (sélecteur planète) et `PlanetPage` (depuis l'URL param) pour synchroniser la `GlobalResourceBar`.
 
 ---
 
@@ -185,19 +188,28 @@ Dual-tab login/register. Fond étoilé décoratif (80 stars statiques + 3 nébul
 
 ### `DashboardPage.tsx` (`/dashboard`)
 
-Quartier général. Queries (refetch 30 s sauf indiqué) :
-- `planetsApi.list`, `forgeApi.history`, `/fleets` (10 s), `/ships`, `/ranking/me`, `forgeApi.status(id)` × N.
+Quartier général enrichi. Queries (refetch 30 s sauf indiqué) :
+- `planetsApi.list`, `forgeApi.history`, `/fleets` (10 s), `/ships`, `/ranking/me`, `forgeApi.status(id)` × N
+- `/tech/tree` (30 s) → `active_research`
+- `/expeditions/active` (15 s)
+- `/combat/history?limit=1` (60 s) → dernier combat
 
-Sections : header username + rang, DailyPanel compact, carte planète natale, 4 stats empire, flottes en transit (limit 4) avec FleetCountdown, forges en cours (ForgeProgress), activité récente (5 notifications).
+Sections (dans l'ordre) :
+1. **Header** username + rang
+2. **DailyPanel** compact
+3. **Ressources de l'Empire** (`EmpireResourcesWidget`) — totaux métal/cristal/deut, liste toutes planètes avec lien `/buildings?planet=id`
+4. **4 stats empire** (vaisseaux, flottes, forges, planètes)
+5. Grille 2 colonnes (items conditionnels) : flottes en transit, forges actives, **Recherche en cours** (`ResearchWidget` — toujours affiché, CTA si inactif), **Expéditions actives** (`ExpeditionsWidget`), **Dernier combat** (`LastCombatWidget`), activité récente
+
+Composants inline : `useCountdown` (hook mutualisé), `fmtCountdownHMS`, `timeAgo`, `EmpireResourcesWidget`, `ResearchWidget`, `ExpeditionsWidget`, `ExpeditionRow`, `LastCombatWidget`, `FleetCountdown`.
 
 ### `PlanetPage.tsx` (`/planets/:id`)
 
-Détail planète. Query `/planets/:id` (30 s).
-Sous-composants inline : `ResourceCounter` (interpolation 1s base + rate × elapsed h, cap capacity), `BuildQueueBar` (countdown), `BuildingCard`. Mutation `POST /planets/:id/build` invalide `['planet', id]`.
+**Non routée** — redirigée vers `/buildings?planet=:id` via `PlanetRedirect` dans `App.tsx`. Fichier conservé pour référence.
 
 ### `BuildingsPage.tsx` (`/buildings`)
 
-Vue infrastructure complète. Sélecteur planète, sections : EN CONSTRUCTION, ⚡ ÉNERGIE (`EnergyGauge` avec consommation par mine), ⛏️ PRODUCTION (3 mines), 🏭 CHANTIER NAVAL (`ShipyardZone` avec `SHIP_TYPES_BY_LEVEL`), 🔬 RECHERCHE, 🌌 EXPÉDITIONS. Mutation enrichie avec toast `next_unlock`.
+Point d'entrée unique pour la gestion planétaire (remplace `PlanetPage`). Lit `?planet={id}` via `useSearchParams` pour présélectionner une planète ; met à jour l'URL à chaque changement de sélecteur. Appelle `setActivePlanetId` (gameStore) pour synchroniser la `GlobalResourceBar`. Sections : EN CONSTRUCTION, ⚡ ÉNERGIE (`EnergyGauge`), ⛏️ PRODUCTION, 🏭 CHANTIER NAVAL (`ShipyardZone`), 🔬 RECHERCHE, 🌌 EXPÉDITIONS. Mutation enrichie avec toast `next_unlock`.
 
 ### `HangarPage.tsx` (`/hangar`)
 

@@ -56,6 +56,9 @@ interface GameState {
   // Connexion WebSocket
   wsConnected: boolean
 
+  // Planète active pour la barre de ressources persistante
+  activePlanetId: string | null
+
   // Ressources actives
   activeResources: {
     metal: number
@@ -67,18 +70,19 @@ interface GameState {
 
   // Overlays WS
   pendingCombatResult: PendingCombatResult | null
-  spectreData: SpectreAwakeningData | null         // ← NOUVEAU
-  pendingForgeResult: PendingForgeResult | null     // ← NOUVEAU
+  spectreData: SpectreAwakeningData | null
+  pendingForgeResult: PendingForgeResult | null
 
   // Notifications
   notifications: Notification[]
 
   // Actions
+  setActivePlanetId: (id: string) => void
   setActiveResources: (r: Partial<GameState['activeResources']>) => void
   setPendingCombatResult: (d: PendingCombatResult | null) => void
   setWsConnected: (v: boolean) => void
-  setSpectreData: (d: SpectreAwakeningData | null) => void          // ← NOUVEAU
-  setPendingForgeResult: (d: PendingForgeResult | null) => void     // ← NOUVEAU
+  setSpectreData: (d: SpectreAwakeningData | null) => void
+  setPendingForgeResult: (d: PendingForgeResult | null) => void
   addNotification: (n: Notification) => void
   markAllRead: () => void
   clearNotifications: () => void
@@ -88,6 +92,8 @@ interface GameState {
 
 export const useGameStore = create<GameState>((set) => ({
   wsConnected: false,
+
+  activePlanetId: null,
 
   activeResources: {
     metal: 0,
@@ -108,6 +114,7 @@ export const useGameStore = create<GameState>((set) => ({
       activeResources: { ...s.activeResources, ...r, updatedAt: new Date() },
     })),
 
+  setActivePlanetId:      (id) => set({ activePlanetId: id }),
   setPendingCombatResult: (d) => set({ pendingCombatResult: d }),
   setWsConnected:         (v) => set({ wsConnected: v }),
   setSpectreData:         (d) => set({ spectreData: d }),          // ← NOUVEAU

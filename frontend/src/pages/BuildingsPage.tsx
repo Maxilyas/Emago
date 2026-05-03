@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '@/lib/api'
 import { ApiError } from '@/lib/api'
@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/ui'
 import { fmt, fmtShort, fmtCountdown } from '@/lib/utils'
 import { BuildingBlockedReason, ProductionDelta } from '@/components/buildings/BuildingTooltip'
 import { BuildingCardUX } from '@/components/buildings/BuildingCardUX'
+import { useGameStore } from '@/stores/gameStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface UnlockInfo { level: number; unlock: string }
@@ -336,10 +337,30 @@ function BuildingCard({ building, resources, onBuild, disabled, queueLength }: {
 // ─── Page principale ──────────────────────────────────────────────────────────
 export function BuildingsPage() {
   const qc = useQueryClient()
-  const [selectedPlanetId, setSelectedPlanetId] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { setActivePlanetId } = useGameStore()
 
   const { data: planets } = useQuery({ queryKey: ['planets'], queryFn: planetsApi.list })
-  useEffect(() => { if (planets?.length && !selectedPlanetId) setSelectedPlanetId(planets[0].id) }, [planets, selectedPlanetId])
+
+  // Planète sélectionnée : priorité au query param, sinon première planète
+  const urlPlanetId = searchParams.get('planet') ?? ''
+  const [selectedPlanetId, setSelectedPlanetId] = useState(urlPlanetId)
+
+  useEffect(() => {
+    if (planets?.length && !selectedPlanetId) {
+      const first = planets[0].id
+      setSelectedPlanetId(first)
+      setSearchParams({ planet: first }, { replace: true })
+    }
+  }, [planets, selectedPlanetId, setSearchParams])
+
+  // Synchronise la planète active avec la barre de ressources globale
+  useEffect(() => { if (selectedPlanetId) setActivePlanetId(selectedPlanetId) }, [selectedPlanetId, setActivePlanetId])
+
+  const handleSelectPlanet = (id: string) => {
+    setSelectedPlanetId(id)
+    setSearchParams({ planet: id }, { replace: true })
+  }
 
   const { data: planet, isLoading } = useQuery({
     queryKey: ['planet', selectedPlanetId],
@@ -377,7 +398,7 @@ export function BuildingsPage() {
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs text-gray-600 font-display">PLANÈTE :</p>
         {(planets ?? []).map(p => (
-          <button key={p.id} onClick={() => setSelectedPlanetId(p.id)}
+          <button key={p.id} onClick={() => handleSelectPlanet(p.id)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all"
             style={selectedPlanetId === p.id
               ? { background: 'rgba(45,125,210,0.15)', border: '1px solid rgba(45,125,210,0.4)', color: '#60a5fa' }

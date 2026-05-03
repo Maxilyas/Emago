@@ -18,6 +18,7 @@ import { CombatReport } from '@/components/combat/CombatReport'
 import { NotificationPanel } from '@/components/layout/NotificationPanel'
 import { SpectreAwakening } from '@/components/ships/SpectreAwakening'
 import { useAuthStore } from '@/stores/authStore'
+import { GlobalResourceBar } from '@/components/layout/GlobalResourceBar'
 
 const NAV_ITEMS = [
   { to: '/dashboard',   label: 'Quartier Général', short: 'QG',        Icon: HomeIcon },
@@ -142,6 +143,12 @@ export function AppLayout() {
             <NotificationPanel />
           </div>
         </header>
+
+        {/* ── Barre de ressources persistante ──────────────────────────── */}
+        <div className="shrink-0 border-b border-border/40 px-4 lg:px-6 py-2"
+          style={{ background: 'rgba(5,8,16,0.85)' }}>
+          <GlobalResourceBar />
+        </div>
 
         <main className="flex-1 overflow-y-auto">
           <div className="p-4 lg:p-6 pb-24 lg:pb-6"><Outlet /></div>

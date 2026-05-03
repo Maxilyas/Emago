@@ -2,7 +2,7 @@
 // Combine : routes originales (hangar/:id) + Sprint 3 (combat) + Sprint 4 (alliances)
 
 import React, { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useAuthStore }    from '@/stores/authStore'
 import { AppLayout }       from '@/components/layout/AppLayout'
 import { LoginPage }       from '@/pages/LoginPage'
@@ -12,6 +12,7 @@ import { ShipDetailPage }  from '@/pages/ShipDetailPage'
 import { ForgePage }       from '@/pages/ForgePage'
 import { GalaxyPage }      from '@/pages/GalaxyPage'
 import { RankingPage }     from '@/pages/RankingPage'
+// PlanetPage conservée pour référence mais la route redirige vers /buildings?planet=
 import { PlanetPage }      from '@/pages/PlanetPage'
 import { BuildingsPage }   from '@/pages/BuildingsPage'
 import { ExpeditionPage }  from '@/pages/ExpeditionPage'
@@ -19,6 +20,11 @@ import { TechPage }        from '@/pages/TechPage'
 import { CombatsPage }     from '@/pages/CombatsPage'
 import { CombatReportPage } from '@/pages/CombatReportPage'
 import { AlliancesPage }   from '@/pages/AlliancesPage'
+
+function PlanetRedirect() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/buildings?planet=${id}`} replace />
+}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuthStore()
@@ -48,7 +54,7 @@ export default function App() {
 
           {/* Pages principales */}
           <Route path="/dashboard"    element={<DashboardPage />} />
-          <Route path="/planets/:id"  element={<PlanetPage />} />
+          <Route path="/planets/:id"  element={<PlanetRedirect />} />
           <Route path="/buildings"    element={<BuildingsPage />} />
 
           {/* Hangar — /hangar/:id pour le détail vaisseau (HangarPage navigue vers /hangar/:id) */}
