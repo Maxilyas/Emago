@@ -116,18 +116,6 @@ export function EmptyState({ icon, title, message, action }: {
   )
 }
 
-// ─── Tooltip ─────────────────────────────────────────────────────────────────
-export function Tooltip({ children, text }: { children: React.ReactNode; text: string }) {
-  return (
-    <div className="relative group inline-block">
-      {children}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-xs text-white rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 border border-surface-border">
-        {text}
-      </div>
-    </div>
-  )
-}
-
 // ─── Tab ──────────────────────────────────────────────────────────────────────
 interface TabsProps { tabs: { id: string; label: string; icon?: string }[]; active: string; onChange: (id: string) => void }
 export function Tabs({ tabs, active, onChange }: TabsProps) {
