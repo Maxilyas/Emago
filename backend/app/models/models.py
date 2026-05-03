@@ -15,6 +15,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -76,6 +77,19 @@ class ModuleFamily(str, enum.Enum):
     EMITTER = "EMITTER"
     SHIELD = "SHIELD"
     CARGO = "CARGO"
+
+
+class ModuleObtainedFrom(str, enum.Enum):
+    EXPEDITION   = "EXPEDITION"
+    COMBAT_LOOT  = "COMBAT_LOOT"
+    CRAFTED      = "CRAFTED"
+    DAILY_REWARD = "DAILY_REWARD"
+
+
+class LootCrateType(str, enum.Enum):
+    STANDARD = "STANDARD"   # combat standard / épave WRECK
+    PREMIUM  = "PREMIUM"    # épave DERELICT / expédition longue
+    ADMIRAL  = "ADMIRAL"    # vaisseau amiral hebdomadaire
 
 
 class FleetMission(str, enum.Enum):
@@ -142,6 +156,10 @@ class Player(Base):
     daily_data: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+    # Shards de modules par type — {"CANNON": 5, "ARMOR": 3, ...}
+    module_shards: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -153,6 +171,12 @@ class Player(Base):
     ships: Mapped[list["Ship"]] = relationship("Ship", back_populates="owner")
     planets: Mapped[list["Planet"]] = relationship("Planet", back_populates="owner")
     fleets: Mapped[list["Fleet"]] = relationship("Fleet", back_populates="owner")
+    player_modules: Mapped[list["PlayerModule"]] = relationship(
+        "PlayerModule", back_populates="player", cascade="all, delete-orphan"
+    )
+    loot_crates: Mapped[list["LootCrate"]] = relationship(
+        "LootCrate", back_populates="player", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_players_score", score.desc()),
@@ -388,12 +412,19 @@ class ShipModule(Base):
     module_type: Mapped[ModuleFamily] = mapped_column(String, nullable=False)
     level: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     affinity_bonus: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # FK vers l'objet d'inventaire (nullable pour compatibilité avec les anciens enregistrements)
+    player_module_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("player_modules.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     installed_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
 
     # Relationships
     ship: Mapped["Ship"] = relationship("Ship", back_populates="modules")
+    player_module: Mapped["PlayerModule | None"] = relationship("PlayerModule")
 
     __table_args__ = (
         CheckConstraint("slot_index BETWEEN 0 AND 5", name="ck_module_slot_index"),
@@ -638,4 +669,102 @@ class CombatLog(Base):
             postgresql_using="gin",
             postgresql_ops={"defender_ships_snapshot": "jsonb_path_ops"},
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TABLE : player_modules  (inventaire des modules)
+# ---------------------------------------------------------------------------
+
+class PlayerModule(Base):
+    __tablename__ = "player_modules"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    player_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("players.id", ondelete="CASCADE"), nullable=False
+    )
+    module_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    level: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+    # ── Traits (Phase 2 : application aux stats) ──────────────────────────
+    trait: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    trait_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bonus_trait: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    bonus_trait_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bonus_trait_2: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    bonus_trait_2_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Nombre de slots de trait utilisés (0-3) — détermine la difficulté Trait Crystal
+    trait_slots_used: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+
+    # ── Module corrompu ───────────────────────────────────────────────────
+    is_corrupted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    corruption_malus_stat: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    corruption_malus_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # ── Durabilité ────────────────────────────────────────────────────────
+    reinstall_charges: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    is_destroyed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+    # ── Source et mémoire ─────────────────────────────────────────────────
+    obtained_from: Mapped[str] = mapped_column(String(32), nullable=False)
+    memory_ship_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    memory_battle_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    obtained_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    # Relationships
+    player: Mapped["Player"] = relationship("Player", back_populates="player_modules")
+
+    __table_args__ = (
+        CheckConstraint("level BETWEEN 1 AND 5", name="ck_player_module_level"),
+        CheckConstraint("reinstall_charges >= 0", name="ck_player_module_charges"),
+        CheckConstraint("trait_slots_used BETWEEN 0 AND 3", name="ck_player_module_trait_slots"),
+        Index("idx_player_modules_player", "player_id", postgresql_where=text("is_destroyed = FALSE")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TABLE : loot_crates  (boîtes de butin non ouvertes)
+# ---------------------------------------------------------------------------
+
+class LootCrate(Base):
+    __tablename__ = "loot_crates"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    player_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("players.id", ondelete="CASCADE"), nullable=False
+    )
+    crate_type: Mapped[str] = mapped_column(String(16), nullable=False)  # LootCrateType
+    source: Mapped[str] = mapped_column(String(16), nullable=False)       # COMBAT / EXPEDITION / EVENT
+
+    # Mémoire du contexte d'obtention
+    source_ship_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_battle_id: Mapped[str | None] = mapped_column(String(64), nullable=True)  # UUID as str, no FK
+
+    opened: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    opened_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
+    # Résultat (rempli à l'ouverture)
+    result_module_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("player_modules.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    shards_awarded: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+
+    obtained_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    # Relationships
+    player: Mapped["Player"] = relationship("Player", back_populates="loot_crates")
+    result_module: Mapped["PlayerModule | None"] = relationship("PlayerModule")
+
+    __table_args__ = (
+        Index("idx_loot_crates_player_unopened", "player_id", postgresql_where=text("opened = FALSE")),
     )

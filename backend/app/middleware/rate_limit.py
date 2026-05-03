@@ -35,8 +35,10 @@ _LIMITS: dict[str, int] = {
     "auth:register":   5,   # POST /auth/register
     "auth:login":     10,   # POST /auth/login — anti brute-force
     "auth:refresh":   30,   # POST /auth/refresh — large mais bloque l'abus automatisé
-    "modules:install": 30,  # PUT /ships/{id}/modules/{slot}
-    "default":       120,   # Tous les autres endpoints authentifiés
+    "modules:install":    30,  # PUT /ships/{id}/modules/{slot}
+    "modules:craft":       5,  # POST /modules/craft
+    "modules:open_crate": 20,  # POST /loot-crates/{id}/open
+    "default":           120,  # Tous les autres endpoints authentifiés
 }
 
 _WINDOW_SECONDS = 60
