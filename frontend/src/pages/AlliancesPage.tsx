@@ -60,7 +60,7 @@ function CreateAllianceModal({ open, onClose }: { open: boolean; onClose: () => 
   const qc = useQueryClient()
 
   const createMutation = useMutation({
-    mutationFn: () => api.post('/alliances', { name, tag: tag.toUpperCase(), description: desc || null }).then(r => r.json()),
+    mutationFn: () => api.post('/alliances', { name, tag: tag.toUpperCase(), description: desc || null }),
     onSuccess: () => {
       toast.success(`Alliance [${tag.toUpperCase()}] créée !`)
       qc.invalidateQueries({ queryKey: ['alliances'] })
@@ -264,7 +264,7 @@ export function AlliancesPage() {
 
   const { data: alliances, isLoading } = useQuery<AllianceSummary[]>({
     queryKey: ['alliances'],
-    queryFn: () => api.get('/alliances').then(r => r.json()),
+    queryFn: () => api.get<AllianceSummary[]>('/alliances'),
     refetchInterval: 60_000,
   })
 
@@ -282,7 +282,7 @@ export function AlliancesPage() {
   }, [myLeadedAlliance?.id])
 
   const joinMutation = useMutation({
-    mutationFn: (allianceId: string) => api.post(`/alliances/${allianceId}/join`).then(r => r.json()),
+    mutationFn: (allianceId: string) => api.post<{ tag: string; alliance_name: string }>(`/alliances/${allianceId}/join`, {}),
     onSuccess: (data) => {
       toast.success(`Vous avez rejoint [${data.tag}] ${data.alliance_name} !`)
       qc.invalidateQueries({ queryKey: ['alliances'] })
@@ -313,7 +313,7 @@ export function AlliancesPage() {
   })
 
   const loadDetail = async (id: string) => {
-    const detail = await api.get(`/alliances/${id}`).then(r => r.json())
+    const detail = await api.get<AllianceDetail>(`/alliances/${id}`)
     setSelected(detail)
   }
 
