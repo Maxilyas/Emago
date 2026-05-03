@@ -372,6 +372,39 @@ export const TRAIT_CONFIG: Record<string, { label: string; color: string }> = {
   military_grade:  { label: 'Grade militaire',    color: '#ef4444' },
 }
 
+// Coûts d'artisanat (niveau résultant) → [primary, secondary, deuterium]
+export const CRAFT_COST: Record<number, [number, number, number]> = {
+  2: [500,    150,     0],
+  3: [1_500,  500,     0],
+  4: [4_500,  1_500,  500],
+  5: [12_000, 4_000, 1_500],
+}
+
+// Ressource primaire et secondaire par type de module
+export const MODULE_PRIMARY_RESOURCE: Record<ModuleType, string> = {
+  CANNON:    'crystal',
+  SHIELD:    'crystal',
+  ARMOR:     'metal',
+  PROPELLER: 'metal',
+  EMITTER:   'deuterium',
+  CARGO:     'deuterium',
+}
+
+export const MODULE_SECONDARY_RESOURCE: Record<ModuleType, string> = {
+  CANNON:    'metal',
+  SHIELD:    'metal',
+  ARMOR:     'crystal',
+  PROPELLER: 'crystal',
+  EMITTER:   'metal',
+  CARGO:     'crystal',
+}
+
+export const RESOURCE_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+  metal:     { label: 'Métal',     icon: '⛏️',  color: '#9ca3af' },
+  crystal:   { label: 'Cristal',   icon: '💎',  color: '#60a5fa' },
+  deuterium: { label: 'Deutérium', icon: '⚗️',  color: '#34d399' },
+}
+
 export const LOOT_CRATE_CONFIG: Record<LootCrateType, { label: string; icon: string; color: string; glow: string }> = {
   STANDARD: { label: 'Caisse Standard', icon: '📦', color: '#6b7280', glow: 'rgba(107,114,128,0.4)' },
   PREMIUM:  { label: 'Caisse Premium',  icon: '💎', color: '#a78bfa', glow: 'rgba(167,139,250,0.5)' },

@@ -7,8 +7,10 @@ import { Modal, LoadingSpinner, Tabs } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import {
   MODULE_CONFIG, TRAIT_CONFIG, LOOT_CRATE_CONFIG,
+  CRAFT_COST, MODULE_PRIMARY_RESOURCE, MODULE_SECONDARY_RESOURCE, RESOURCE_CONFIG,
   type ModuleType, type PlayerModule, type LootCrate, type LootCrateOpenResult,
 } from '@/types'
+import { fmt } from '@/lib/utils'
 import { timeAgo } from '@/lib/utils'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -267,8 +269,9 @@ function CraftTab() {
       </div>
 
       {/* Sélection en cours */}
-      <div className="panel">
-        <div className="flex items-center justify-between mb-3">
+      <div className="panel space-y-3">
+        {/* Slots de sélection */}
+        <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-300">
             Sélection ({selected.length}/3)
             {selMod && (
@@ -278,11 +281,12 @@ function CraftTab() {
             )}
           </h3>
           {resultLevel && selected.length === 3 && (
-            <span className="text-xs text-green-400">
-              → {MODULE_CONFIG[selMod!.module_type]?.icon} Nv.{resultLevel}
+            <span className="text-xs text-green-400 font-medium">
+              → {MODULE_CONFIG[selMod!.module_type]?.icon} Niveau {resultLevel}
             </span>
           )}
         </div>
+
         <div className="flex gap-2">
           {[0, 1, 2].map((i) => {
             const mod = selected[i] ? modules.find(m => m.id === selected[i]) : null
@@ -306,9 +310,56 @@ function CraftTab() {
           })}
         </div>
 
+        {/* Coût de fusion + ressources disponibles */}
+        {selMod && resultLevel && (() => {
+          const [costPrimary, costSecondary, costDeut] = CRAFT_COST[resultLevel] ?? [0, 0, 0]
+          const primaryRes   = MODULE_PRIMARY_RESOURCE[selMod.module_type]
+          const secondaryRes = MODULE_SECONDARY_RESOURCE[selMod.module_type]
+          const selectedPlanet = planets.find(p => p.id === planetId)
+
+          const costs: Array<{ res: string; cost: number }> = []
+          if (costPrimary   > 0) costs.push({ res: primaryRes,   cost: costPrimary })
+          if (costSecondary > 0) costs.push({ res: secondaryRes, cost: costSecondary })
+          if (costDeut      > 0) costs.push({ res: 'deuterium',  cost: costDeut })
+
+          return costs.length > 0 ? (
+            <div className="rounded-lg border border-surface-border bg-surface-tertiary p-3 space-y-2">
+              <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">
+                Coût de fusion → Niveau {resultLevel}
+              </p>
+              <div className="space-y-1.5">
+                {costs.map(({ res, cost }) => {
+                  const resCfg = RESOURCE_CONFIG[res]
+                  const available = selectedPlanet ? (selectedPlanet as Record<string, number>)[res] ?? 0 : null
+                  const canAfford = available === null || available >= cost
+                  return (
+                    <div key={res} className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5 text-gray-300">
+                        <span>{resCfg?.icon}</span>
+                        <span>{resCfg?.label}</span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-mono font-bold ${canAfford ? 'text-white' : 'text-red-400'}`}>
+                          {fmt(cost)}
+                        </span>
+                        {available !== null && (
+                          <span className={`text-[10px] ${canAfford ? 'text-gray-500' : 'text-red-500'}`}>
+                            / {fmt(Math.floor(available))} dispo
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null
+        })()}
+
+        {/* Sélecteur de planète */}
         {planets.length > 0 && (
-          <div className="mt-3">
-            <label className="text-xs text-gray-400 block mb-1">Planète (paiement des ressources)</label>
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Planète (paiement)</label>
             <select
               value={planetId}
               onChange={e => setPlanetId(e.target.value)}
@@ -322,14 +373,14 @@ function CraftTab() {
         )}
 
         <button
-          className="btn-primary w-full mt-3"
+          className="btn-primary w-full"
           disabled={selected.length < 3 || !planetId || isPending}
           onClick={() => craft()}
         >
           {isPending ? '⏳ Fusion…' : '✨ Fusionner 3 → 1'}
         </button>
         {selected.length > 0 && (
-          <button className="btn-secondary w-full mt-2 text-xs" onClick={() => setSelected([])}>
+          <button className="btn-secondary w-full text-xs" onClick={() => setSelected([])}>
             Annuler la sélection
           </button>
         )}
