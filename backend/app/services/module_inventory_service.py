@@ -203,9 +203,11 @@ async def create_module(
         corruption_malus_stat=corruption_malus_stat,
         corruption_malus_value=corruption_malus_value,
         reinstall_charges=charges,
+        is_destroyed=False,
         obtained_from=obtained_from,
         memory_ship_name=memory_ship_name,
         memory_battle_ref=memory_battle_ref,
+        obtained_at=datetime.now(UTC),
     )
     db.add(mod)
     return mod
