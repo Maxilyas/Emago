@@ -252,6 +252,9 @@ async def start_forge(
         started_at=now,
         completed_at=completed_at,
         result_ship_id=None,
+        cost_metal=int(forge_cost.get("metal", 0)),
+        cost_crystal=int(forge_cost.get("crystal", 0)),
+        cost_deuterium=int(forge_cost.get("deuterium", 0)),
     )
     db.add(forge_entry)
 
@@ -366,9 +369,8 @@ async def finalize_forge(
             )
 
     # --- Parents consommés ---
-    ship_a.status = ShipStatus("SCRAPPED") if hasattr(ShipStatus, "SCRAPPED") \
-        else "SCRAPPED"
-    ship_b.status = ship_a.status
+    ship_a.status = ShipStatus.SCRAPPED
+    ship_b.status = ShipStatus.SCRAPPED
     db.add(ship_a)
     db.add(ship_b)
 

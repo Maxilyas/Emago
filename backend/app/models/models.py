@@ -66,6 +66,7 @@ class ShipStatus(str, enum.Enum):
     DOCKED = "DOCKED"
     IN_FLEET = "IN_FLEET"
     IN_FORGE = "IN_FORGE"
+    SCRAPPED = "SCRAPPED"
 
 
 class ModuleFamily(str, enum.Enum):
