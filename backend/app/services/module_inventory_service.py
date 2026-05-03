@@ -282,6 +282,9 @@ async def install_module(
     )
     db.add(sm)
 
+    # Flush explicite pour que le SELECT suivant voie le nouveau ShipModule
+    await db.flush()
+
     await invalidate_ship_cache(ship_id)
     _, modules = await _load_ship_with_modules(ship_id, db)
     current_stats = await compute_and_store_stats(ship, modules)

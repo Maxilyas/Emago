@@ -297,6 +297,7 @@ function InstallModuleModal({ open, slot, shipId, isPremiumSlot, onClose, onInst
   const { mutate, isPending } = useMutation({
     mutationFn: () => shipsApi.modules.install(shipId, slot, { module_id: selected! }),
     onSuccess: (res) => {
+      qc.setQueryData(['ship', shipId], (old: any) => old ? { ...old, current_stats: res.current_stats } : old)
       qc.invalidateQueries({ queryKey: ['ship', shipId] })
       qc.invalidateQueries({ queryKey: ['modules'] })
       const capped = res.cap_reached.length > 0
