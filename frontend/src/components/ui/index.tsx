@@ -1,5 +1,6 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
+import { TRAIT_CONFIG } from '@/types'
 
 // ─── LoadingSpinner ───────────────────────────────────────────────────────────
 export function LoadingSpinner({ size = 'md', className }: { size?: 'sm' | 'md' | 'lg'; className?: string }) {
@@ -148,5 +149,52 @@ export function Tabs({ tabs, active, onChange }: TabsProps) {
         </button>
       ))}
     </div>
+  )
+}
+
+// ─── Tooltip ─────────────────────────────────────────────────────────────────
+export function Tooltip({ children, content, className }: {
+  children: React.ReactNode
+  content: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('relative inline-block group', className)}>
+      {children}
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 pointer-events-none w-max max-w-xs">
+        <div className="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-200 shadow-2xl">
+          {content}
+        </div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-700" />
+      </div>
+    </div>
+  )
+}
+
+// ─── TraitBadge ───────────────────────────────────────────────────────────────
+export function TraitBadge({ trait, size = 'sm' }: { trait: string; size?: 'xs' | 'sm' }) {
+  const cfg = TRAIT_CONFIG[trait]
+  if (!cfg) return <span className="text-[10px] text-gray-500">{trait}</span>
+  const textSize = size === 'xs' ? 'text-[10px]' : 'text-[10px]'
+  return (
+    <Tooltip content={cfg.description}>
+      <span
+        className={cn(textSize, 'px-1.5 py-0.5 rounded-full font-medium cursor-help inline-block border')}
+        style={{ color: cfg.color, background: `${cfg.color}15`, borderColor: `${cfg.color}40` }}
+      >
+        {cfg.label}
+      </span>
+    </Tooltip>
+  )
+}
+
+// ─── MemoryBadge ──────────────────────────────────────────────────────────────
+export function MemoryBadge({ name }: { name: string }) {
+  return (
+    <Tooltip content={`Mémoire d'origine — ce module a été récupéré lors de : "${name}"`}>
+      <span className="text-[10px] px-1.5 py-0.5 rounded-full text-purple-400 bg-purple-900/20 border border-purple-500/30 cursor-help inline-block">
+        📜 {name}
+      </span>
+    </Tooltip>
   )
 }

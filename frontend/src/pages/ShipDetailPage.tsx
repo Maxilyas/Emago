@@ -5,10 +5,10 @@ import toast from 'react-hot-toast'
 import { shipsApi } from '@/api/ships'
 import { modulesApi } from '@/api/modules'
 import { ShipStatPanel } from '@/components/ships/ShipStatPanel'
-import { Modal, LoadingSpinner, Tabs } from '@/components/ui'
+import { Modal, LoadingSpinner, Tabs, TraitBadge, MemoryBadge } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import {
-  RARITY_CONFIG, MODULE_CONFIG, TRAIT_CONFIG,
+  RARITY_CONFIG, MODULE_CONFIG,
   type Rarity, type PlayerModule, type ModuleType, type ShipDetail,
 } from '@/types'
 import { rarityColor, rarityGlow, fmt, timeAgo } from '@/lib/utils'
@@ -225,7 +225,6 @@ function ModuleManager({ ship, onInstall, onRemove }: {
           const installed = modules.find((m) => m.slot === i)
           const isPremium = i >= premiumStart
           const cfg = installed ? MODULE_CONFIG[installed.type] : null
-          const traitCfg = installed?.trait ? TRAIT_CONFIG[installed.trait] : null
           const stat = installed ? MODULE_CONFIG[installed.type]?.stat : null
 
           return (
@@ -261,14 +260,7 @@ function ModuleManager({ ship, onInstall, onRemove }: {
                         {installed.affinity_bonus && (
                           <span className="text-[10px] text-green-300 bg-green-900/20 px-1.5 py-0.5 rounded">Affinité ×1.15</span>
                         )}
-                        {traitCfg && (
-                          <span
-                            className="text-[10px] px-1.5 py-0.5 rounded-full"
-                            style={{ color: traitCfg.color, background: `${traitCfg.color}20` }}
-                          >
-                            {traitCfg.label}
-                          </span>
-                        )}
+                        {installed.trait && <TraitBadge trait={installed.trait} />}
                         {installed.reinstall_charges !== undefined && (
                           <span className={`text-[10px] font-mono ${installed.reinstall_charges <= 1 ? 'text-red-400' : 'text-gray-500'}`}>
                             {installed.reinstall_charges}× charges
@@ -416,8 +408,6 @@ function InstallModuleModal({ open, slot, shipId, isPremiumSlot, onClose, onInst
             filtered.map((mod: PlayerModule) => {
               const cfg = MODULE_CONFIG[mod.module_type]
               const stat = cfg?.stat ?? ''
-              const traitCfg = mod.trait ? TRAIT_CONFIG[mod.trait] : null
-              const bonusCfg = mod.bonus_trait ? TRAIT_CONFIG[mod.bonus_trait] : null
               const isSelected = selected === mod.id
               const boostPct = shipData
                 ? (estimateBoostRate(mod, shipData.ship_class) * 100).toFixed(1)
@@ -450,26 +440,14 @@ function InstallModuleModal({ open, slot, shipId, isPremiumSlot, onClose, onInst
                     {boostPct !== null && (
                       <span className="text-xs text-green-400 font-mono">~+{boostPct}% {STAT_LABEL[stat] ?? stat}</span>
                     )}
-                    {traitCfg && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ color: traitCfg.color, background: `${traitCfg.color}20` }}>
-                        {traitCfg.label}
-                      </span>
-                    )}
-                    {bonusCfg && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ color: bonusCfg.color, background: `${bonusCfg.color}20` }}>
-                        {bonusCfg.label}
-                      </span>
-                    )}
+                    {mod.trait && <TraitBadge trait={mod.trait} />}
+                    {mod.bonus_trait && <TraitBadge trait={mod.bonus_trait} />}
                     {mod.is_corrupted && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded text-red-400 bg-red-900/20">
                         ☠ Corrompu — {mod.corruption_malus_stat ?? '?'} pénalisé
                       </span>
                     )}
-                    {mod.memory_ship_name && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded text-purple-400 bg-purple-900/20">
-                        📜 {mod.memory_ship_name}
-                      </span>
-                    )}
+                    {mod.memory_ship_name && <MemoryBadge name={mod.memory_ship_name} />}
                   </div>
                 </button>
               )

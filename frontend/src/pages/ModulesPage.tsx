@@ -3,10 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { modulesApi } from '@/api/modules'
 import { planetsApi } from '@/api/index'
-import { Modal, LoadingSpinner, Tabs } from '@/components/ui'
+import { Modal, LoadingSpinner, Tabs, TraitBadge, MemoryBadge } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import {
-  MODULE_CONFIG, TRAIT_CONFIG, LOOT_CRATE_CONFIG,
+  MODULE_CONFIG, LOOT_CRATE_CONFIG,
   CRAFT_COST, MODULE_PRIMARY_RESOURCE, MODULE_SECONDARY_RESOURCE, RESOURCE_CONFIG,
   type ModuleType, type PlayerModule, type LootCrate, type LootCrateOpenResult,
 } from '@/types'
@@ -29,7 +29,6 @@ function ModuleBadge({ mod, selected, onClick }: {
   onClick?: () => void
 }) {
   const cfg = MODULE_CONFIG[mod.module_type]
-  const traitCfg = mod.trait ? TRAIT_CONFIG[mod.trait] : null
 
   return (
     <button
@@ -51,6 +50,7 @@ function ModuleBadge({ mod, selected, onClick }: {
           <span className="text-base">{cfg?.icon ?? '🔧'}</span>
           <span className="text-sm font-medium text-white">{cfg?.label ?? mod.module_type}</span>
           <span className="text-xs text-gray-500">Nv.{mod.level}</span>
+          <span className="text-[10px] text-gray-600">{cfg?.stat && `→ ${cfg.stat}`}</span>
         </div>
         <span
           className="text-xs font-mono font-bold"
@@ -62,17 +62,12 @@ function ModuleBadge({ mod, selected, onClick }: {
 
       {/* Badges */}
       <div className="mt-1.5 flex flex-wrap gap-1">
-        {mod.trait && traitCfg && (
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-            style={{ color: traitCfg.color, background: `${traitCfg.color}20`, border: `1px solid ${traitCfg.color}40` }}
-          >
-            {traitCfg.label}
-          </span>
-        )}
+        {mod.trait && <TraitBadge trait={mod.trait} />}
+        {mod.bonus_trait && <TraitBadge trait={mod.bonus_trait} />}
+        {mod.bonus_trait_2 && <TraitBadge trait={mod.bonus_trait_2} />}
         {mod.is_corrupted && (
           <span className="text-[10px] px-1.5 py-0.5 rounded-full text-red-400 bg-red-900/20 border border-red-500/30">
-            ☠ Corrompu
+            ☠ Corrompu {mod.corruption_malus_stat && `(${mod.corruption_malus_stat})`}
           </span>
         )}
         {mod.is_destroyed && (
@@ -80,11 +75,7 @@ function ModuleBadge({ mod, selected, onClick }: {
             Détruit
           </span>
         )}
-        {mod.memory_ship_name && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full text-purple-400 bg-purple-900/20 border border-purple-500/30">
-            📜 {mod.memory_ship_name}
-          </span>
-        )}
+        {mod.memory_ship_name && <MemoryBadge name={mod.memory_ship_name} />}
       </div>
     </button>
   )

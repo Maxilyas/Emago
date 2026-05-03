@@ -349,11 +349,46 @@ export const FORGE_COSTS: Record<ShipType, { metal: number; crystal: number; deu
   cruiser_defense:     { metal: 90000, crystal: 30000, deuterium: 6000 },
 }
 
-export const DOCTRINE_CONFIG: Record<string, { label: string; icon: string; color: string; description: string }> = {
-  BERSERKER:    { label: 'Berserker',     icon: '⚔️',  color: '#ef4444', description: '+20% DPS · −25% bouclier' },
-  FORTERESSE:   { label: 'Forteresse',   icon: '🏰',  color: '#3b82f6', description: '−40% vitesse · 50% réd. dégâts' },
-  FANTOME:      { label: 'Fantôme',      icon: '👻',  color: '#8b5cf6', description: '15% évasion · cargo = 0' },
-  AMPLIFICATEUR:{ label: 'Amplificateur',icon: '📡',  color: '#22d3ee', description: '×2 aura soutien · −30% DPS' },
+export const DOCTRINE_CONFIG: Record<string, {
+  label: string; icon: string; color: string; description: string
+  module_type: ModuleType; effects: Array<{ text: string; positive: boolean }>
+}> = {
+  BERSERKER: {
+    label: 'Berserker', icon: '⚔️', color: '#ef4444',
+    description: '+20% DPS · −25% bouclier',
+    module_type: 'CANNON',
+    effects: [
+      { text: '+20% DPS', positive: true },
+      { text: '−25% Bouclier', positive: false },
+    ],
+  },
+  FORTERESSE: {
+    label: 'Forteresse', icon: '🏰', color: '#3b82f6',
+    description: '−40% vitesse · 50% réd. dégâts',
+    module_type: 'ARMOR',
+    effects: [
+      { text: '50% réduction des dégâts', positive: true },
+      { text: '−40% Vitesse', positive: false },
+    ],
+  },
+  FANTOME: {
+    label: 'Fantôme', icon: '👻', color: '#8b5cf6',
+    description: '15% évasion · cargo = 0',
+    module_type: 'PROPELLER',
+    effects: [
+      { text: '15% chance d\'esquive', positive: true },
+      { text: 'Cargo annulé (= 0)', positive: false },
+    ],
+  },
+  AMPLIFICATEUR: {
+    label: 'Amplificateur', icon: '📡', color: '#22d3ee',
+    description: '×2 aura soutien · −30% DPS',
+    module_type: 'EMITTER',
+    effects: [
+      { text: '×2 Aura de soutien', positive: true },
+      { text: '−30% DPS', positive: false },
+    ],
+  },
 }
 
 export const RESONANCE_CONFIG: Record<string, { label: string; icon: string; description: string }> = {
@@ -363,13 +398,31 @@ export const RESONANCE_CONFIG: Record<string, { label: string; icon: string; des
   OVERCHARGE: { label: 'Surcharge', icon: '💥', description: 'CANON + ÉMETTEUR — boosts ×1.10' },
 }
 
-export const TRAIT_CONFIG: Record<string, { label: string; color: string }> = {
-  battle_hardened: { label: 'Endurci au combat', color: '#f97316' },
-  overclocked:     { label: 'Surcadencé',        color: '#eab308' },
-  pristine:        { label: 'Pristine',           color: '#22d3ee' },
-  resonant:        { label: 'Résonant',           color: '#a78bfa' },
-  lightweight:     { label: 'Allégé',             color: '#4ade80' },
-  military_grade:  { label: 'Grade militaire',    color: '#ef4444' },
+export const TRAIT_CONFIG: Record<string, { label: string; color: string; description: string }> = {
+  battle_hardened: {
+    label: 'Endurci au combat', color: '#f97316',
+    description: '+10% au boost de base — forgé dans les combats, chaque installation renforce sa résistance.',
+  },
+  overclocked: {
+    label: 'Surcadencé', color: '#eab308',
+    description: '+15% au boost de base, mais la surchauffe use le module : −1 charge de réinstallation.',
+  },
+  pristine: {
+    label: 'Pristine', color: '#22d3ee',
+    description: 'Entretenu à la perfection. +2 charges de réinstallation supplémentaires.',
+  },
+  resonant: {
+    label: 'Résonant', color: '#a78bfa',
+    description: 'Répond à une fréquence secondaire : active le bonus d\'affinité d\'une 2ᵉ classe (+15% de boost).',
+  },
+  lightweight: {
+    label: 'Allégé', color: '#4ade80',
+    description: 'Construction allégée. +5% au boost de base + bonus de vitesse additionnel (+3% absolu).',
+  },
+  military_grade: {
+    label: 'Grade militaire', color: '#ef4444',
+    description: 'Fabrication militaire haut de gamme. +12% au boost de base — réservé aux modules niveau III+.',
+  },
 }
 
 // Coûts d'artisanat (niveau résultant) → [primary, secondary, deuterium]
