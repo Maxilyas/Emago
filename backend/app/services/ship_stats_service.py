@@ -111,6 +111,46 @@ _TRAIT_BOOST_MULT: dict[str, float] = {
 # Bonus de vitesse absolu (ajouté après le calcul ratio, avant plafonnement)
 _TRAIT_SPEED_FLAT = 0.03   # lightweight uniquement
 
+# ── Doctrines (Phase 3) ──────────────────────────────────────────────────────
+# 4+ modules du même type → doctrine activée, bonus + malus sur les stats finales
+_DOCTRINE_TRIGGER_COUNT = 4
+
+_DOCTRINES: dict[str, dict] = {
+    "BERSERKER": {
+        "module_type": "CANNON",
+        "multipliers": {"dps": 1.20, "shield": 0.75},
+        "zeroes":      [],
+        "combat_flags": {},
+    },
+    "FORTERESSE": {
+        "module_type": "ARMOR",
+        "multipliers": {"speed": 0.60},
+        "zeroes":      [],
+        "combat_flags": {"damage_reduction": 0.50},
+    },
+    "FANTOME": {
+        "module_type": "PROPELLER",
+        "multipliers": {},
+        "zeroes":      ["cargo"],
+        "combat_flags": {"evasion_chance": 0.15},
+    },
+    "AMPLIFICATEUR": {
+        "module_type": "EMITTER",
+        "multipliers": {"support_aura": 2.0, "dps": 0.70},
+        "zeroes":      [],
+        "combat_flags": {},
+    },
+}
+
+# ── Résonances (Phase 3) ─────────────────────────────────────────────────────
+# 2 types co-installés → multiplicateur sur leurs boosts + éventuel combat flag
+_RESONANCES: list[dict] = [
+    {"id": "BASTION",    "types": frozenset({"ARMOR",    "SHIELD"}),   "boost_mult": 1.10, "combat_flags": {}},
+    {"id": "RIPOSTE",    "types": frozenset({"CANNON",   "SHIELD"}),   "boost_mult": 1.0,  "combat_flags": {"riposte_chance": 0.05}},
+    {"id": "VELOCITE",   "types": frozenset({"PROPELLER","CARGO"}),    "boost_mult": 1.10, "combat_flags": {}},
+    {"id": "OVERCHARGE", "types": frozenset({"CANNON",   "EMITTER"}),  "boost_mult": 1.10, "combat_flags": {}},
+]
+
 # TTL Redis pour current_stats
 _STATS_TTL = 300        # secondes
 _HANGAR_TTL = 120       # secondes pour la liste hangar
@@ -291,6 +331,23 @@ def _compute_current_stats(
     modules_detail: list[dict] = []
     speed_flat_bonus = 0.0   # bonus vitesse absolu (trait lightweight)
 
+    # Pre-scan : compte des types installés pour doctrines et résonances
+    module_type_counts: dict[str, int] = {}
+    for mod in modules:
+        if mod.module_type in _MODULE_EFFECT:
+            module_type_counts[mod.module_type] = module_type_counts.get(mod.module_type, 0) + 1
+
+    # Résonances actives : les deux types doivent être présents
+    installed_types = set(module_type_counts.keys())
+    active_resonances = [r for r in _RESONANCES if r["types"].issubset(installed_types)]
+
+    # Multiplicateur de boost de résonance par type de module
+    resonance_type_mult: dict[str, float] = {}
+    for res in active_resonances:
+        if res["boost_mult"] != 1.0:
+            for t in res["types"]:
+                resonance_type_mult[t] = resonance_type_mult.get(t, 1.0) * res["boost_mult"]
+
     for mod in modules:
         if mod.module_type not in _MODULE_EFFECT:
             continue   # module_type inconnu — on ignore (defensive)
@@ -319,6 +376,8 @@ def _compute_current_stats(
                 base_boost *= _TRAIT_BOOST_MULT.get(pm.bonus_trait_2, 1.0)
 
         effective_boost = base_boost * (_AFFINITY_MULT if has_affinity else 1.0)
+        # Résonance : multiplicateur de boost si les deux types co-installés
+        effective_boost *= resonance_type_mult.get(mod.module_type, 1.0)
         module_boost_ratio[stat_name] = module_boost_ratio.get(stat_name, 0.0) + effective_boost
 
         modules_detail.append({
@@ -385,6 +444,31 @@ def _compute_current_stats(
                 else:
                     final[stat] = int(max(0, round(raw)))
 
+    # --- Étape 6 : Doctrines (4+ modules du même type) ---
+    active_doctrine_names: list[str] = []
+    combat_flags: dict[str, float] = {}
+
+    for doc_name, doc in _DOCTRINES.items():
+        if module_type_counts.get(doc["module_type"], 0) >= _DOCTRINE_TRIGGER_COUNT:
+            active_doctrine_names.append(doc_name)
+            for stat, mult in doc["multipliers"].items():
+                if stat in final:
+                    raw = float(final[stat]) * mult
+                    if stat == "speed":
+                        final[stat] = round(max(0.0, raw), 1)
+                    elif stat in ("stealth", "support_aura"):
+                        final[stat] = round(max(0.0, raw), 2)
+                    else:
+                        final[stat] = int(max(0, round(raw)))
+            for stat in doc["zeroes"]:
+                if stat in final:
+                    final[stat] = 0
+            combat_flags.update(doc["combat_flags"])
+
+    # Résonances — combat flags (ex. riposte_chance)
+    for res in active_resonances:
+        combat_flags.update(res.get("combat_flags", {}))
+
     # --- Résultat enrichi ---
     return {
         # Stats de jeu
@@ -404,6 +488,13 @@ def _compute_current_stats(
         # Slots disponibles (total et premium, pour l'UI du hangar)
         "slots_total":             _RARITY_SLOTS.get(_enum_val(ship.rarity), (2, 0))[0],
         "slots_premium":           _RARITY_SLOTS.get(_enum_val(ship.rarity), (2, 0))[1],
+        # Doctrines et résonances (Phase 3)
+        "doctrine":         active_doctrine_names[0] if active_doctrine_names else None,
+        "doctrine_active":  bool(active_doctrine_names),
+        "resonances":       [r["id"] for r in active_resonances],
+        "evasion_chance":   combat_flags.get("evasion_chance", 0.0),
+        "damage_reduction": combat_flags.get("damage_reduction", 0.0),
+        "riposte_chance":   combat_flags.get("riposte_chance", 0.0),
     }
 
 

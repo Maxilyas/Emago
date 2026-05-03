@@ -103,6 +103,9 @@ class CombatShip:
     dps:               int
     shield_regen:      float        # ratio par round (Grade 3+)
     support_aura:      float
+    evasion_chance:    float = 0.0   # Doctrine FANTOME
+    damage_reduction:  float = 0.0   # Doctrine FORTERESSE
+    riposte_chance:    float = 0.0   # Résonance RIPOSTE (CANNON+SHIELD)
     immunity_used:     bool = False  # Grade 4 : immunité première mort
 
     # Comptabilité post-combat
@@ -306,20 +309,49 @@ def _resolve_round(
             break
         target = rng.choice([d for d in defenders if d.alive])
 
+        # Doctrine FANTOME : évasion — le défenseur esquive le tir
+        if target.evasion_chance > 0 and rng.random() < target.evasion_chance:
+            hits.append({
+                "shooter_id":    str(shooter.ship_id),
+                "target_id":     str(target.ship_id),
+                "side":          "attacker",
+                "raw_dps":       0,
+                "effective_dps": 0,
+                "evaded":        True,
+            })
+            continue
+
         # DPS de base + variance ±10 %
         raw_dps = shooter.dps * rng.uniform(0.90, 1.10)
         # Support aura alliée (si synergie Attaque+Soutien active)
         effective_dps = int(raw_dps * (1.0 + attacker_support_bonus))
+        # Doctrine FORTERESSE : réduction de dégâts
+        if target.damage_reduction > 0:
+            effective_dps = int(effective_dps * (1.0 - target.damage_reduction))
 
         hit = target.take_damage(effective_dps)
         hit.update({
-            "shooter_id": str(shooter.ship_id),
-            "target_id":  str(target.ship_id),
-            "side":       "attacker",
-            "raw_dps":    int(raw_dps),
+            "shooter_id":    str(shooter.ship_id),
+            "target_id":     str(target.ship_id),
+            "side":          "attacker",
+            "raw_dps":       int(raw_dps),
             "effective_dps": effective_dps,
         })
         hits.append(hit)
+
+        # Résonance RIPOSTE : contre-tir immédiat si la cible survit
+        if target.alive and target.riposte_chance > 0 and rng.random() < target.riposte_chance:
+            riposte_dps = int(target.dps * rng.uniform(0.50, 0.80))
+            riposte_hit = shooter.take_damage(riposte_dps)
+            riposte_hit.update({
+                "shooter_id":    str(target.ship_id),
+                "target_id":     str(shooter.ship_id),
+                "side":          "attacker_riposte",
+                "raw_dps":       riposte_dps,
+                "effective_dps": riposte_dps,
+                "riposte":       True,
+            })
+            hits.append(riposte_hit)
 
     # --- Tirs des défenseurs sur les attaquants ---
     for shooter in alive_def:
@@ -327,18 +359,47 @@ def _resolve_round(
             break
         target = rng.choice([a for a in attackers if a.alive])
 
+        # Doctrine FANTOME : évasion
+        if target.evasion_chance > 0 and rng.random() < target.evasion_chance:
+            hits.append({
+                "shooter_id":    str(shooter.ship_id),
+                "target_id":     str(target.ship_id),
+                "side":          "defender",
+                "raw_dps":       0,
+                "effective_dps": 0,
+                "evaded":        True,
+            })
+            continue
+
         raw_dps = shooter.dps * rng.uniform(0.90, 1.10)
         effective_dps = int(raw_dps * (1.0 + defender_support_bonus))
+        # Doctrine FORTERESSE : réduction de dégâts
+        if target.damage_reduction > 0:
+            effective_dps = int(effective_dps * (1.0 - target.damage_reduction))
 
         hit = target.take_damage(effective_dps)
         hit.update({
-            "shooter_id": str(shooter.ship_id),
-            "target_id":  str(target.ship_id),
-            "side":       "defender",
-            "raw_dps":    int(raw_dps),
+            "shooter_id":    str(shooter.ship_id),
+            "target_id":     str(target.ship_id),
+            "side":          "defender",
+            "raw_dps":       int(raw_dps),
             "effective_dps": effective_dps,
         })
         hits.append(hit)
+
+        # Résonance RIPOSTE : contre-tir immédiat si la cible survit
+        if target.alive and target.riposte_chance > 0 and rng.random() < target.riposte_chance:
+            riposte_dps = int(target.dps * rng.uniform(0.50, 0.80))
+            riposte_hit = shooter.take_damage(riposte_dps)
+            riposte_hit.update({
+                "shooter_id":    str(target.ship_id),
+                "target_id":     str(shooter.ship_id),
+                "side":          "defender_riposte",
+                "raw_dps":       riposte_dps,
+                "effective_dps": riposte_dps,
+                "riposte":       True,
+            })
+            hits.append(riposte_hit)
 
     # --- Régénérations fin de round ---
     for s in attackers + defenders:
@@ -791,6 +852,9 @@ async def _build_combatants(
             dps=stats["dps"],
             shield_regen=stats.get("shield_regen_per_round", 0.0),
             support_aura=stats.get("support_aura", 0.0),
+            evasion_chance=stats.get("evasion_chance", 0.0),
+            damage_reduction=stats.get("damage_reduction", 0.0),
+            riposte_chance=stats.get("riposte_chance", 0.0),
         )
         combatants.append(cs)
     return combatants
