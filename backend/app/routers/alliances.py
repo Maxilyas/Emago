@@ -266,7 +266,7 @@ async def create_alliance(
 
     # Vérification et déduction ressources (planète natale)
     homeworld_result = await db.execute(
-        select(Planet).where(Planet.owner_id == player.id, Planet.is_homeworld == True)  # noqa: E712
+        select(Planet).where(Planet.owner_id == player.id, Planet.is_homeworld == True).with_for_update()  # noqa: E712
     )
     homeworld = homeworld_result.scalar_one_or_none()
     if not homeworld:

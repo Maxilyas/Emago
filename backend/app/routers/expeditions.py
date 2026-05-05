@@ -231,7 +231,7 @@ async def launch_expedition(
     # Valider les vaisseaux
     ships = []
     for sid in body.ship_ids:
-        r = await db.execute(select(Ship).where(Ship.id == sid))
+        r = await db.execute(select(Ship).where(Ship.id == sid).with_for_update())
         ship = r.scalar_one_or_none()
         if not ship or ship.owner_id != player.id:
             raise HTTPException(status_code=404, detail=f"Vaisseau {sid} introuvable.")
@@ -242,7 +242,7 @@ async def launch_expedition(
     # Vérifier le coût en deutérium
     cost = DURATION_COST[body.duration]
     r = await db.execute(
-        select(Planet).where(Planet.owner_id == player.id, Planet.is_homeworld == True)  # noqa: E712
+        select(Planet).where(Planet.owner_id == player.id, Planet.is_homeworld == True).with_for_update()  # noqa: E712
     )
     homeworld = r.scalar_one_or_none()
     if not homeworld:

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.core.deps import CurrentPlayer, DbDep
-from app.models.models import Planet, Player
+from app.models.models import Planet, Player, ResearchQueue
 
 router = APIRouter(prefix="/tech", tags=["tech"])
 
@@ -209,10 +209,6 @@ TECH_TREE: dict[str, dict] = {
     },
 }
 
-# Stockage en mémoire des recherches actives (à migrer en BDD)
-_active_research: dict[str, dict] = {}  # player_id → recherche active
-
-
 class ResearchRequest(BaseModel):
     tech_id: str
 
@@ -226,9 +222,13 @@ async def get_tech_tree(player: CurrentPlayer, db: DbDep) -> dict:
         player_techs = player.tech_levels
 
     now = datetime.now(UTC)
-    player_id = str(player.id)
-    active = _active_research.get(player_id)
-    active_tech_id = active["tech_id"] if active and datetime.fromisoformat(active["completes_at"]) > now else None
+    r_active = await db.execute(
+        select(ResearchQueue)
+        .where(ResearchQueue.player_id == player.id, ResearchQueue.is_completed == False)  # noqa: E712
+        .limit(1)
+    )
+    active = r_active.scalar_one_or_none()
+    active_tech_id = active.tech_id if active and active.completes_at > now else None
 
     result = {}
     for tech_id, tech in TECH_TREE.items():
@@ -262,7 +262,14 @@ async def get_tech_tree(player: CurrentPlayer, db: DbDep) -> dict:
             cls: {k: v for k, v in result.items() if TECH_TREE[k]["class"] == cls}
             for cls in ["ATTACK", "DEFENSE", "SUPPORT", "EXPLORATION"]
         },
-        "active_research": active if active_tech_id else None,
+        "active_research": {
+            "tech_id": active.tech_id,
+            "tech_label": active.tech_label,
+            "target_level": active.target_level,
+            "started_at": active.started_at.isoformat(),
+            "completes_at": active.completes_at.isoformat(),
+            "eta_seconds": max(0, int((active.completes_at - now).total_seconds())),
+        } if active_tech_id else None,
     }
 
 
@@ -293,15 +300,23 @@ async def start_research(body: ResearchRequest, player: CurrentPlayer, db: DbDep
                 detail=f"Prérequis non rempli : {req_tech.get('label', req['tech_id'])} niveau {req['level']} requis."
             )
 
-    # Vérifier pas de recherche en cours
     now = datetime.now(UTC)
-    active = _active_research.get(player_id)
-    if active and datetime.fromisoformat(active["completes_at"]) > now:
+
+    # Vérifier pas de recherche en cours (avec lock pour éviter les double-soumissions)
+    r_active = await db.execute(
+        select(ResearchQueue)
+        .where(ResearchQueue.player_id == player.id, ResearchQueue.is_completed == False)  # noqa: E712
+        .with_for_update()
+    )
+    active = r_active.scalar_one_or_none()
+    if active and active.completes_at > now:
         raise HTTPException(status_code=409, detail="Une recherche est déjà en cours.")
 
     # Vérifier et déduire les ressources
     cost = tech["costs"][current_level]
-    r = await db.execute(select(Planet).where(Planet.owner_id == player.id, Planet.is_homeworld == True))  # noqa: E712
+    r = await db.execute(
+        select(Planet).where(Planet.owner_id == player.id, Planet.is_homeworld == True).with_for_update()  # noqa: E712
+    )
     homeworld = r.scalar_one_or_none()
     if not homeworld:
         raise HTTPException(status_code=404, detail="Planète natale introuvable.")
@@ -319,14 +334,15 @@ async def start_research(body: ResearchRequest, player: CurrentPlayer, db: DbDep
     db.add(homeworld)
 
     completes_at = now + timedelta(hours=cost["hours"])
-    _active_research[player_id] = {
-        "tech_id": body.tech_id,
-        "tech_label": tech["label"],
-        "target_level": current_level + 1,
-        "started_at": now.isoformat(),
-        "completes_at": completes_at.isoformat(),
-        "eta_seconds": int(cost["hours"] * 3600),
-    }
+    entry = ResearchQueue(
+        player_id=player.id,
+        tech_id=body.tech_id,
+        tech_label=tech["label"],
+        target_level=current_level + 1,
+        started_at=now,
+        completes_at=completes_at,
+    )
+    db.add(entry)
 
     return {
         "tech_id": body.tech_id,
@@ -340,25 +356,31 @@ async def start_research(body: ResearchRequest, player: CurrentPlayer, db: DbDep
 @router.post("/research/complete")
 async def complete_research(player: CurrentPlayer, db: DbDep) -> dict:
     """Finalise une recherche terminée et applique le bonus."""
-    player_id = str(player.id)
     now = datetime.now(UTC)
-    active = _active_research.get(player_id)
+
+    r_active = await db.execute(
+        select(ResearchQueue)
+        .where(ResearchQueue.player_id == player.id, ResearchQueue.is_completed == False)  # noqa: E712
+        .with_for_update()
+    )
+    active = r_active.scalar_one_or_none()
 
     if not active:
         raise HTTPException(status_code=404, detail="Aucune recherche en cours.")
 
-    if datetime.fromisoformat(active["completes_at"]) > now:
+    if active.completes_at > now:
         raise HTTPException(status_code=409, detail="Recherche pas encore terminée.")
 
-    tech_id = active["tech_id"]
+    tech_id = active.tech_id
     player_techs = dict(getattr(player, 'tech_levels', None) or {})
-    player_techs[tech_id] = active["target_level"]
+    player_techs[tech_id] = active.target_level
 
     if hasattr(player, 'tech_levels'):
         player.tech_levels = player_techs
         db.add(player)
 
-    del _active_research[player_id]
+    active.is_completed = True
+    db.add(active)
 
     return {
         "tech_id": tech_id,

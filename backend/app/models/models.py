@@ -768,3 +768,39 @@ class LootCrate(Base):
     __table_args__ = (
         Index("idx_loot_crates_player_unopened", "player_id", postgresql_where=text("opened = FALSE")),
     )
+
+
+# ---------------------------------------------------------------------------
+# TABLE : research_queue  (recherches technologiques en cours)
+# ---------------------------------------------------------------------------
+
+class ResearchQueue(Base):
+    __tablename__ = "research_queue"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    player_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("players.id", ondelete="CASCADE"), nullable=False
+    )
+    tech_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    tech_label: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_level: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    completes_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    is_completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+
+    player: Mapped["Player"] = relationship("Player")
+
+    __table_args__ = (
+        Index(
+            "idx_research_queue_active",
+            "player_id",
+            "completes_at",
+            postgresql_where=text("is_completed = false"),
+        ),
+    )

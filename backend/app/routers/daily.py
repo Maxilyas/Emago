@@ -186,7 +186,11 @@ async def get_daily_status(player: CurrentPlayer, db: DbDep) -> DailyStatusRespo
 @router.post("/login", response_model=DailyLoginResponse)
 async def claim_daily_login(player: CurrentPlayer, db: DbDep) -> DailyLoginResponse:
     """Réclame la récompense de connexion quotidienne."""
-    daily = dict(_get_player_daily_data(player))
+    # Locker le joueur pour éviter le double-claim concurrent
+    r_player = await db.execute(select(Player).where(Player.id == player.id).with_for_update())
+    locked_player = r_player.scalar_one()
+
+    daily = dict(_get_player_daily_data(locked_player))
     today = _today_str()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
 
@@ -218,9 +222,9 @@ async def claim_daily_login(player: CurrentPlayer, db: DbDep) -> DailyLoginRespo
     # Chercher la planète natale pour ajouter les ressources
     result = await db.execute(
         select(Planet).where(
-            Planet.owner_id == player.id,
+            Planet.owner_id == locked_player.id,
             Planet.is_homeworld == True,  # noqa: E712
-        )
+        ).with_for_update()
     )
     homeworld: Planet | None = result.scalar_one_or_none()
     if homeworld:
@@ -233,9 +237,9 @@ async def claim_daily_login(player: CurrentPlayer, db: DbDep) -> DailyLoginRespo
     daily["last_login_date"] = today
     daily["streak"] = streak
     # SQLAlchemy JSONB — on doit réaffecter l'attribut
-    if hasattr(player, 'daily_data'):
-        player.daily_data = daily
-        db.add(player)
+    if hasattr(locked_player, 'daily_data'):
+        locked_player.daily_data = daily
+        db.add(locked_player)
 
     next_day = (day % MAX_STREAK_DAY) + 1
     return DailyLoginResponse(
