@@ -239,14 +239,14 @@ Voir [10_ameliorations.md](./10_ameliorations.md) pour la liste détaillée. Poi
 
 | Agent | Rôle | FAIT | EN COURS | À FAIRE |
 |---|---|---|---|---|
-| 1 | Chef de projet | 7 | 1 | 5 |
-| 2 | Game Designer | 13 | 1 | 8 |
-| 3 | Architecte | 9 | 1 | 5 |
-| 4 | UI/UX Designer | 12 | 1 | 4 |
-| 5 | Dev Backend | 16 | 2 | 8 |
-| 6 | Dev Frontend | 14 | 1 | 8 |
-| 7 | Dev BDD | 7 | 1 | 4 |
-| 8 | QA & Sécurité | 12 | 1 | 9 |
+| 1 | Chef de projet | 8 | 1 | 4 |
+| 2 | Game Designer | 15 | 1 | 7 |
+| 3 | Architecte | 10 | 1 | 4 |
+| 4 | UI/UX Designer | 15 | 1 | 4 |
+| 5 | Dev Backend | 25 | 2 | 6 |
+| 6 | Dev Frontend | 19 | 1 | 7 |
+| 7 | Dev BDD | 9 | 1 | 4 |
+| 8 | QA & Sécurité | 16 | 1 | 9 |
 | 9 | DevOps | 11 | 1 | 4 |
 
 Détails dans chaque doc agent dédiée + [`10_ameliorations.md`](./10_ameliorations.md).

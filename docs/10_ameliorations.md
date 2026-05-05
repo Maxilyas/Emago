@@ -14,7 +14,7 @@
 - [ ] **Tests d'intégration WebSocket** : auth (4001/4004), isolation cross-player, reconnexion auto, message JSON malformé.
 - [ ] **Heartbeat WebSocket serveur-side** : timeout détection des connexions zombies.
 - [ ] **Optim ranking job** : N+1 queries actuelles → batch SELECTs avec JOIN.
-- [ ] **Rate limit slowapi** sur `/auth/register`, `/auth/login` plus strict.
+- [x] ~~**Rate limit slowapi** sur `/auth/register`, `/auth/login` plus strict.~~ ✅ FAIT (commit `69ce108` — sliding window renforcée, 5/min register par IP, 10/min login par IP)
 
 ### Sécurité
 
@@ -53,7 +53,7 @@
 - [ ] **Routers marché galactique** : offres d'achat/vente entre joueurs.
 - [ ] **Implémenter ESPIONAGE** dans `fleet_arrival.py` (actuellement stub `is_recalled = True`).
 - [ ] **Implémenter COLONIZE** dans `fleet_arrival.py` (création planète à coordonnées).
-- [ ] **Module inventory player** : table `player_module_inventory` pour persister les drops d'expédition.
+- [x] ~~**Module inventory player** : table `player_module_inventory` pour persister les drops d'expédition.~~ ✅ FAIT (feat(modules) Phases 1-4 — migration 0009, `module_inventory_service.py`, artisanat, loot crates)
 - [ ] **Implémenter `hull_damage` / `module_damage` flags expédition** dans `expedition_service.py`.
 - [ ] **Pool `EXPEDITION_SCAR_TAGS`** : remplacer `tag_id = 1` hardcodé par lookup réel via `EXPEDITION_SCAR_TAGS`.
 
@@ -81,7 +81,7 @@
 
 ### Base de données (Agent 7)
 
-- [ ] **Index JSONB** sur `combat_logs.attacker_ships_snapshot` pour participation combat (`combat.py:107`).
+- [x] ~~**Index JSONB** sur `combat_logs.attacker_ships_snapshot` pour participation combat (`combat.py:107`).~~ ✅ FAIT — migration 0007, GIN `jsonb_path_ops` sur attacker + defender snapshot
 - [ ] **EXPLAIN ANALYZE** : `fleet_arrival`, `resource_tick`, hangar query, ranking, alliance score.
 - [ ] **Compléter `scar_tags`** jusqu'à ~500 entrées (actuellement ~30 dans le seed migration 0002).
 - [ ] **Procédure de purge** `combat_logs > 30 jours` (DELETE ou archivage S3).
@@ -93,7 +93,7 @@
 ### Architecture (Agent 3)
 
 - [ ] **Spec endpoints Phase 2** : alliances avancées, espionnage, marché.
-- [ ] **Charger `alliance_tag`** dans ranking (`ranking.py:53`).
+- [x] ~~**Charger `alliance_tag`** dans ranking (`ranking.py:53`).~~ ✅ FAIT (commit `592f197`)
 - [ ] **WebSocket horizontal** : sticky sessions Nginx `ip_hash` ou activation Redis pub/sub strict.
 - [ ] **Stratégie multi-VPS** (api + db séparés) à 500+ joueurs.
 - [ ] **Celery + Redis broker** à 1000+ joueurs (au lieu d'APScheduler).
